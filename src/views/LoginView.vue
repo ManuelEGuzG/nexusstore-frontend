@@ -49,7 +49,10 @@ async function entrar() {
         </button>
       </form>
 
-      <p class="alt">¿Primera vez? <RouterLink to="/registro" class="link">Creá tu tienda</RouterLink></p>
+      <p class="alt">
+        ¿Querés NexusStore para tu pulpería?
+        <span class="contacto">Escribinos.</span>
+      </p>
     </div>
   </div>
 </template>
@@ -64,6 +67,5 @@ async function entrar() {
 .tagline { color: var(--text-dim); margin: 0.5rem 0 2rem; }
 .entrar-btn { margin-top: 0.5rem; font-size: var(--fs-md); }
 .alt { margin-top: 1.5rem; text-align: center; color: var(--text-dim); font-size: var(--fs-sm); }
-.link { color: var(--accent); font-weight: 600; text-decoration: none; }
-.link:hover { text-decoration: underline; }
+.contacto { color: var(--accent); font-weight: 600; }
 </style>

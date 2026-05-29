@@ -31,17 +31,7 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem('nexus_token', data.token)
   }
 
-  async function registrar(payload: {
-    nombre: string
-    correo: string
-    password: string
-    tienda_nombre: string
-    moneda?: string
-  }) {
-    const { data } = await api.post('/register', payload)
-    guardarSesion(data)
-    return data
-  }
+  
 
   async function login(correo: string, password: string) {
     const { data } = await api.post('/login', { correo, password })
@@ -78,7 +68,6 @@ export const useAuthStore = defineStore('auth', () => {
     token,
     estaAutenticado,
     esDueno,
-    registrar,
     login,
     cargarUsuario,
     cerrarSesion,

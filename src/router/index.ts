@@ -11,12 +11,6 @@ const router = createRouter({
       meta: { publica: true },
     },
     {
-      path: '/registro',
-      name: 'registro',
-      component: () => import('@/views/RegistroView.vue'),
-      meta: { publica: true },
-    },
-    {
       path: '/',
       name: 'inicio',
       component: () => import('@/views/DashboardView.vue'),
