@@ -51,7 +51,6 @@ async function cargar() {
   cargando.value = true
   try {
     const { data } = await api.get('/sales')
-    // Compatibilidad integral con respuestas paginadas o colecciones crudas
     ventas.value = data.data || data
   } catch {
     /* Mitigación silente de excepciones de pasarela de red */
@@ -125,52 +124,54 @@ function pagosTxt(v: Venta) {
       </li>
     </ul>
 
-    <div v-if="seleccionada" class="modal-bg" @click.self="seleccionada = null">
-      <div class="modal card">
-        <div class="det-head">
-          <h3>Comprobante Fiscal #{{ seleccionada.id }}</h3>
-          <p class="dim font-mono">{{ fmtFecha(seleccionada.fecha) }}</p>
-        </div>
-
-        <ul class="det-items">
-          <li v-for="(it, i) in seleccionada.items" :key="i">
-            <span class="item-desc">{{ it.cantidad }} u. × {{ it.descripcion }}</span>
-            <span class="item-monto">{{ fmt(it.cantidad * it.precio_unitario - it.descuento) }}</span>
-          </li>
-        </ul>
-        
-        <div class="det-total">
-          <span>Monto Consolidado</span>
-          <span class="total-destacado">{{ fmt(seleccionada.total) }}</span>
-        </div>
-
-        <template v-if="seleccionada.estado === 'anulada'">
-          <div class="anulada-msg" role="alert">
-            <strong>Transacción Invalidadas:</strong> {{ seleccionada.motivo_anulacion }}
+    <Teleport to="body">
+      <div v-if="seleccionada" class="modal-bg" @click.self="seleccionada = null">
+        <div class="modal card">
+          <div class="det-head">
+            <h3>Comprobante Fiscal #{{ seleccionada.id }}</h3>
+            <p class="dim font-mono">{{ fmtFecha(seleccionada.fecha) }}</p>
           </div>
-        </template>
-        
-        <template v-else>
-          <div class="anular-box">
-            <label for="f-motivo">Justificación de Reversión Fiscal</label>
-            <input 
-              id="f-motivo" 
-              v-model="motivoAnular" 
-              placeholder="Ej. Error en pasarela de pago o devolución" 
-            />
-            <button 
-              class="btn anular-btn" 
-              :disabled="anulando || !motivoAnular.trim()" 
-              @click="anular"
-            >
-              {{ anulando ? 'Procesando Reversión…' : 'Anular Transacción' }}
-            </button>
-          </div>
-        </template>
 
-        <button class="btn btn-ghost btn-block" @click="seleccionada = null">Cerrar Registro</button>
+          <ul class="det-items">
+            <li v-for="(it, i) in seleccionada.items" :key="i">
+              <span class="item-desc">{{ it.cantidad }} u. × {{ it.descripcion }}</span>
+              <span class="item-monto">{{ fmt(it.cantidad * it.precio_unitario - it.descuento) }}</span>
+            </li>
+          </ul>
+          
+          <div class="det-total">
+            <span>Monto Consolidado</span>
+            <span class="total-destacado">{{ fmt(seleccionada.total) }}</span>
+          </div>
+
+          <template v-if="seleccionada.estado === 'anulada'">
+            <div class="anulada-msg" role="alert">
+              <strong>Transacción Invalidada:</strong> {{ seleccionada.motivo_anulacion }}
+            </div>
+          </template>
+          
+          <template v-else>
+            <div class="anular-box">
+              <label for="f-motivo">Justificación de Reversión Fiscal</label>
+              <input 
+                id="f-motivo" 
+                v-model="motivoAnular" 
+                placeholder="Ej. Error en pasarela de pago o devolución" 
+              />
+              <button 
+                class="btn anular-btn" 
+                :disabled="anulando || !motivoAnular.trim()" 
+                @click="anular"
+              >
+                {{ anulando ? 'Procesando Reversión…' : 'Anular Transacción' }}
+              </button>
+            </div>
+          </template>
+
+          <button class="btn btn-ghost btn-block" @click="seleccionada = null">Cerrar Registro</button>
+        </div>
       </div>
-    </div>
+    </Teleport>
   </div>
 </template>
 
@@ -292,17 +293,60 @@ function pagosTxt(v: Venta) {
 }
 .anular-box input:focus { outline: none; border-color: #ef4444; }
 
-.anular-btn { width: 100%; background: #ef4444; color: #ffffff; font-weight: 600; height: 42px; border-radius: 6px; transition: background 0.2s; }
+/* Botones Base */
+.btn {
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.anular-btn { width: 100%; background: #ef4444; color: #ffffff; font-weight: 600; height: 42px; }
 .anular-btn:hover:not(:disabled) { background: #dc2626; }
 .anular-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.btn-block { width: 100%; height: 40px; justify-content: center; font-weight: 600; margin-top: 0.5rem; }
+.btn-ghost {
+  background: transparent;
+  color: #94a3b8;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
+}
 
-/* Capa de Fondo Modal */
-.modal-bg { position: fixed; inset: 0; background: rgba(6, 8, 13, 0.85); display: grid; place-items: center; padding: 1rem; z-index: 50; backdrop-filter: blur(4px); }
-.modal { padding: 1.6rem; width: 100%; max-width: 430px; max-height: 88vh; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.4); }
+.btn-block { 
+  width: 100%; 
+  height: 40px; 
+  font-weight: 600; 
+  margin-top: 0.5rem; 
+}
 
-/* Animación Estándar */
+/* Capa de Fondo del Modal (Viewport Completo) */
+.modal-bg { 
+  position: fixed; 
+  inset: 0; 
+  background: rgba(6, 8, 13, 0.85); 
+  display: grid; 
+  place-items: center; 
+  padding: 1rem; 
+  z-index: 9999; /* Asegura superposición absoluta en la app */
+  backdrop-filter: blur(4px); 
+}
+
+.modal { 
+  padding: 1.6rem; 
+  width: 100%; 
+  max-width: 430px; 
+  max-height: 88vh; 
+  overflow-y: auto; 
+  box-shadow: 0 20px 25px -5px rgba(0,0,0,0.4); 
+}
+
+/* Animación de entrada */
 .fade-up {
   opacity: 0;
   transform: translateY(6px);
@@ -310,7 +354,7 @@ function pagosTxt(v: Venta) {
 }
 @keyframes slideUp { to { opacity: 1; transform: translateY(0); } }
 
-/* Gestión de Scroll en Desglose */
+/* Gestión de scroll interno del modal */
 .det-items::-webkit-scrollbar { width: 4px; }
 .det-items::-webkit-scrollbar-track { background: transparent; }
 .det-items::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }

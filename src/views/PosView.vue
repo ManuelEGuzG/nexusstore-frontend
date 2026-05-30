@@ -114,7 +114,6 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 
 <template>
   <div class="pos">
-    <!-- Header Principal -->
     <header class="pos-top">
       <button class="back" @click="router.push('/')" aria-label="Volver">
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
@@ -131,9 +130,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
       </div>
     </header>
 
-    <!-- Cuerpo del POS -->
     <div class="pos-body">
-      <!-- Panel Izquierdo: Catálogo y Búsqueda -->
       <section class="panel-prod">
         <div class="acciones">
           <div class="buscar-contenedor">
@@ -163,7 +160,6 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
         </div>
       </section>
 
-      <!-- Panel Derecho: Carrito de Ventas -->
       <section class="panel-cart card" :class="{ abierto: carritoAbierto }">
         <div class="cart-head">
           <h2>Venta Actual</h2>
@@ -211,7 +207,6 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
       </section>
     </div>
 
-    <!-- Barra de estado flotante inferior en Móvil -->
     <div v-if="!pos.vacio" class="cart-bar" :class="{ 'cart-bar-oculto': carritoAbierto }" @click="carritoAbierto = true">
       <div class="cb-info">
         <span class="cb-count">{{ totalItems }} {{ totalItems === 1 ? 'ítem' : 'ítems' }} en cuenta</span>
@@ -220,12 +215,10 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
       <span class="cb-ver">Ver detalle ›</span>
     </div>
 
-    <!-- Modales e Interacciones globales -->
     <Transition name="fade">
       <div v-if="carritoAbierto" class="cart-overlay" @click="carritoAbierto = false"></div>
     </Transition>
 
-    <!-- Modal: Monto Libre -->
     <Transition name="modal-pop">
       <div v-if="mostrarMontoLibre" class="modal-bg" @click.self="mostrarMontoLibre = false">
         <div class="modal">
@@ -240,8 +233,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
             inputmode="decimal" 
             placeholder="₡ 0" 
             class="monto-input" 
-            @keyup.enter="confirmarMontoLibre" 
-          />
+            @keyup.enter="confirmarMontoLibre" />
           <div class="modal-acciones">
             <button class="btn btn-ghost" @click="mostrarMontoLibre = false">Cancelar</button>
             <button class="btn btn-primary" :disabled="!montoLibre || parseFloat(montoLibre) <= 0" @click="confirmarMontoLibre">Agregar al Carrito</button>
@@ -250,7 +242,6 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
       </div>
     </Transition>
 
-    <!-- Modal: Procesar Transacción / Pago -->
     <Transition name="modal-pop">
       <div v-if="mostrarPago" class="modal-bg" @click.self="mostrarPago = false">
         <div class="modal">
@@ -407,6 +398,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 /* Filtros y Acciones superiores */
 .acciones { 
   display: flex; 
+  align-items: center; /* Solución: Fuerza alineación vertical matemática perfecta */
   gap: 0.6rem; 
   margin-bottom: 1rem; 
   flex-shrink: 0; 
@@ -417,6 +409,8 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   position: relative;
   flex: 1;
   min-width: 200px;
+  display: flex;
+  align-items: center;
 }
 .buscar-icono {
   position: absolute;
@@ -425,17 +419,32 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   transform: translateY(-50%);
   color: rgba(255, 255, 255, 0.3);
   pointer-events: none;
+  display: block;
+  z-index: 2;
 }
 .buscar {
   width: 100%;
+  display: block;
   background: #141824; 
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px; 
   padding: 0.65rem 0.9rem 0.65rem 2.4rem; 
   color: #ffffff;
   font-size: 0.9rem; 
+  line-height: 1.25rem; /* Asegura un baseline idéntico a los botones */
+  box-sizing: border-box;
   transition: all 0.2s ease;
 }
+
+/* Remueve artefactos nativos de Webkit que distorsionan alturas en inputs de tipo search */
+.buscar::-webkit-search-decoration,
+.buscar::-webkit-search-cancel-button,
+.buscar::-webkit-search-results-button,
+.buscar::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 .buscar:focus { 
   outline: none; 
   border-color: var(--accent, #a3e635); 
@@ -454,9 +463,11 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   padding: 0.65rem 1.1rem;
   font-weight: 600;
   font-size: 0.88rem;
+  line-height: 1.25rem; /* Sincroniza la altura exacta de la caja de texto */
   border-radius: 8px;
   border: 1px solid transparent;
   cursor: pointer;
+  box-sizing: border-box;
   transition: all 0.15s ease;
 }
 .btn-primary {
@@ -534,7 +545,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 .prod-nombre { font-weight: 500; font-size: 0.85rem; line-height: 1.3; color: #f1f5f9; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .prod-precio { color: var(--accent, #a3e635); font-weight: 700; font-size: 1rem; letter-spacing: -0.01em; }
 
-/* Estados vacíos corporativos (Sin emojis, uso de SVG sutiles) */
+/* Estados vacíos corporativos */
 .vacio-prod, .cart-vacio { 
   padding: 3rem 1.5rem; 
   text-align: center; 
@@ -550,9 +561,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 .vp-title, .vc-title { font-weight: 600; font-size: 0.95rem; margin-bottom: 0.35rem; color: #ffffff; }
 .dim { color: rgba(255, 255, 255, 0.4); font-size: 0.82rem; line-height: 1.4; margin: 0; max-width: 280px; }
 
-/* ==========================================================================
-   PANEL PANEL-CART (Estructura Drawer nativa para Móvil)
-   ========================================================================== */
+/* Panel Carrito */
 .panel-cart { 
   display: flex; 
   flex-direction: column; 
@@ -622,9 +631,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 
 .cart-overlay { position: fixed; inset: 0; background: rgba(5, 6, 11, 0.75); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); z-index: 54; }
 
-/* ==========================================================================
-   MODALES RIGUROSOS & PROFESIONALES
-   ========================================================================== */
+/* Modales */
 .modal-bg {
   position: fixed; inset: 0; background: rgba(4, 5, 8, 0.8);
   backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
@@ -656,9 +663,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 .cerrar-modal { margin-top: 0.75rem; border: none; color: rgba(255,255,255,0.35); }
 .cerrar-modal:hover { color: #ffffff; background: rgba(255,255,255,0.02); }
 
-/* ==========================================================================
-   TRANSITIONS TRANSITIONS VUE (Aceleración nativa)
-   ========================================================================== */
+/* Transitions */
 .fade-enter-active, .fade-leave-active { transition: opacity 0.15s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
@@ -671,9 +676,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 .animate-fade-in { animation: fadeIn 0.25s ease forwards; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: translateY(0); } }
 
-/* ==========================================================================
-   TABLET & DESKTOP (Layout Estático Limpio)
-   ========================================================================== */
+/* Responsive Grid layouts */
 @media (min-width: 768px) {
   .pos-body { 
     display: grid; 
