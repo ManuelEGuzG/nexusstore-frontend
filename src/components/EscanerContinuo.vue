@@ -15,7 +15,7 @@ interface ItemEscaneado {
 }
 
 const props = defineProps<{
-  items: ItemEscaneado[] // el carrito actual, para mostrarlo en el panel
+  items: ItemEscaneado[] // El carrito actual para la previsualización en lote
 }>()
 
 const emit = defineEmits<{
@@ -46,7 +46,9 @@ onMounted(async () => {
         if (!result) return
         const codigo = result.getText()
         const ahora = Date.now()
+        
         if (codigo === ultimoCodigo && ahora - ultimoMomento < DEBOUNCE) return
+        
         ultimoCodigo = codigo
         ultimoMomento = ahora
         emit('leido', codigo)
@@ -56,13 +58,13 @@ onMounted(async () => {
   } catch (e: any) {
     cargando.value = false
     if (e?.name === 'NotAllowedError') {
-      error.value = 'Permiso de cámara denegado. Activalo en el navegador.'
+      error.value = 'Permiso de cámara denegado. Actívalo en las preferencias del navegador.'
     } else if (e?.name === 'NotFoundError') {
-      error.value = 'No se encontró una cámara en este dispositivo.'
+      error.value = 'No se detectó hardware óptico en este dispositivo.'
     } else if (location.protocol === 'http:' && !location.hostname.includes('localhost')) {
-      error.value = 'La cámara necesita una conexión segura (HTTPS). Escribí el código a mano por ahora.'
+      error.value = 'Seguridad de red: El terminal óptico requiere una transmisión cifrada HTTPS.'
     } else {
-      error.value = 'No se pudo abrir la cámara: ' + (e?.message || 'error remoto')
+      error.value = 'Fallo del subsistema óptico: ' + (e?.message || 'Error desconocido.')
     }
   }
 })
@@ -71,31 +73,37 @@ function detener() {
   try { controls?.stop() } catch { /* ignore */ }
   controls = null
 }
+
 onBeforeUnmount(detener)
 
-// Beep de confirmación (lo invoca el padre vía ref)
+// Beep acústico de confirmación posicional (Invocado por el padre vía ref)
 function beep(exito: boolean) {
   try {
     audioCtx = audioCtx || new (window.AudioContext || (window as any).webkitAudioContext)()
     const osc = audioCtx.createOscillator()
     const gain = audioCtx.createGain()
+    
     osc.connect(gain)
     gain.connect(audioCtx.destination)
+    
     osc.frequency.value = exito ? 880 : 300
-    gain.gain.value = 0.08
+    gain.gain.value = 0.06
+    
     osc.start()
     osc.stop(audioCtx.currentTime + (exito ? 0.08 : 0.18))
-  } catch { /* sin soporte de audio, falla silenciosa */ }
+  } catch { /* Falla silenciosa si el navegador restringe el audio */ }
 }
 
-// Aviso breve (toast) + beep
+// Control de Toasts HUD internos sobre el video
 interface Toast { id: number; texto: string; ok: boolean }
 const toasts = ref<Toast[]>([])
 let toastId = 0
+
 function avisar(texto: string, ok = true) {
   const id = ++toastId
   toasts.value.push({ id, texto, ok })
   beep(ok)
+  
   setTimeout(() => {
     toasts.value = toasts.value.filter((t) => t.id !== id)
   }, 1600)
@@ -103,32 +111,42 @@ function avisar(texto: string, ok = true) {
 
 defineExpose({ avisar })
 
-// Entrada manual de respaldo
+// Entrada manual alternativa
 const manual = ref('')
 function enviarManual() {
-  if (manual.value.trim()) {
-    const cod = manual.value.trim()
+  const codLimpio = manual.value.trim()
+  if (codLimpio) {
     manual.value = ''
-    emit('leido', cod)
+    emit('leido', codLimpio)
   }
+}
+
+function terminarFlujo() {
+  detener()
+  emit('cerrar')
 }
 </script>
 
 <template>
-  <div class="modal-bg esc-bg">
-    <div class="modal esc-card fade-up">
+  <div class="esc-bg" @click.self="terminarFlujo" @keydown.escape="terminarFlujo" tabindex="-1">
+    <div class="esc-card card fade-up" role="dialog" aria-modal="true" aria-labelledby="modal-continuous-title">
+      
       <div class="esc-header">
-        <h3>Escaneando ventas</h3>
-        <button class="btn btn-ghost mini" @click="detener(); emit('cerrar')">Terminar</button>
+        <h3 id="modal-continuous-title">Escaneo Continuo de Ventas</h3>
+        <button type="button" class="btn-cerrar-top" @click="terminarFlujo">×</button>
       </div>
 
       <div v-if="!error" class="video-wrap">
         <video ref="videoRef" class="video" autoplay muted playsinline></video>
-        <div class="marco"></div>
-        <p v-if="cargando" class="cargando muted">Abriendo cámara…</p>
-        <p v-else class="hint">Apuntá al código de barras del producto</p>
+        
+        <div class="marco" :class="{ 'scanning': !cargando }">
+          <div class="linea-laser" v-if="!cargando"></div>
+        </div>
+        
+        <p v-if="cargando" class="status-text text-pulse">Inicializando canal de video…</p>
+        <p v-else class="status-text hint">Alinee el código del artículo</p>
 
-        <div class="toasts">
+        <div class="toasts" aria-live="polite">
           <div
             v-for="t in toasts"
             :key="t.id"
@@ -140,23 +158,27 @@ function enviarManual() {
         </div>
       </div>
 
-      <div v-else class="error-box">
-        <p class="err-txt warn-text">{{ error }}</p>
+      <div v-else class="error-box" role="alert">
+        <p class="err-txt">{{ error }}</p>
       </div>
 
       <div v-if="items.length" class="control-panel">
-        <p class="cp-label">Artículos agregados ({{ items.length }})</p>
+        <p class="cp-label">Líneas en transacción actual ({{ items.length }})</p>
         <ul class="cp-list">
           <li v-for="(it, i) in items" :key="i" class="cp-item">
-            <span class="cp-nombre">{{ it.descripcion }}</span>
+            <span class="cp-nombre" :title="it.descripcion">{{ it.descripcion }}</span>
             <div class="cp-ctrl">
               <button
+                type="button"
                 class="cp-btn"
+                aria-label="Restar unidad"
                 @click="it.product_id !== null && emit('cambiarCantidad', it.product_id, -1)"
               >−</button>
               <span class="cp-cant">{{ it.cantidad }}</span>
               <button
+                type="button"
                 class="cp-btn"
+                aria-label="Sumar unidad"
                 @click="it.product_id !== null && emit('cambiarCantidad', it.product_id, 1)"
               >+</button>
             </div>
@@ -171,52 +193,100 @@ function enviarManual() {
             type="text"
             inputmode="numeric"
             class="inp"
-            placeholder="O escribe el código a mano…"
+            placeholder="O digite el código de barras…"
+            autoComplete="off"
             @keyup.enter="enviarManual"
           />
-          <button class="btn btn-ghost" @click="enviarManual">Sumar</button>
+          <button type="button" class="btn btn-ghost" :disabled="!manual.trim()" @click="enviarManual">
+            Agregar
+          </button>
         </div>
       </div>
 
-      <button class="btn btn-primary btn-block terminar" @click="detener(); emit('cerrar')">
+      <button type="button" class="btn btn-primary btn-block terminar" @click="terminarFlujo">
         Finalizar Venta
       </button>
+
     </div>
   </div>
 </template>
 
 <style scoped>
-/* Fondo oscuro con Blur heredado */
+/* Fondo e Inyección de Centrado Absoluto */
 .esc-bg {
-  background: rgba(6, 8, 12, 0.85);
-  z-index: 70;
+  position: fixed; 
+  inset: 0; 
+  background: rgba(6, 8, 13, 0.88);
+  display: flex; 
+  align-items: center;
+  justify-content: center;
+  padding: 1rem; 
+  z-index: 150;
+  backdrop-filter: blur(5px);
+  outline: none;
 }
 
+/* Tarjeta Modal: Resguardo de Proporción e Inyección Limpia de Estilos */
 .esc-card {
-  max-height: 92vh;
+  padding: 1.6rem; 
+  width: 100%; 
+  max-width: 440px;
+  min-width: 320px;
+  max-height: 94vh;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Reset protector de herencias del layout global */
+.card { 
+  background: var(--bg-card, #111422); 
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.06)); 
+  border-radius: 8px; 
+  display: block !important; 
 }
 
 .esc-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--sp-3);
+  margin-bottom: var(--sp-3, 1rem);
 }
 
 .esc-header h3 {
-  font-size: var(--fs-md);
+  font-size: var(--fs-md, 1.15rem);
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+  letter-spacing: -0.01em;
 }
 
-/* Área del Stream de Video */
+.btn-cerrar-top {
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 1.6rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  transition: color 0.15s ease;
+}
+
+.btn-cerrar-top:hover {
+  color: #ffffff;
+}
+
+/* Área de Renderizado de Video: Forzado Estricto 4:3 */
 .video-wrap {
   position: relative;
   width: 100%;
-  aspect-ratio: 4 / 3;
-  background: #000;
-  border-radius: var(--radius-sm);
+  aspect-ratio: 4 / 3 !important;
+  background: #06080d;
+  border-radius: var(--radius-sm, 6px);
   overflow: hidden;
-  margin-bottom: var(--sp-3);
-  border: 1px solid var(--border);
+  margin-bottom: var(--sp-3, 1rem);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.06));
 }
 
 .video {
@@ -225,115 +295,160 @@ function enviarManual() {
   object-fit: cover;
 }
 
-/* Retícula o mira láser de escaneo */
+/* Retícula de Enfoque Rectangular Amplia */
 .marco {
   position: absolute;
-  inset: 22% 14%;
-  border: 2px solid var(--accent);
-  border-radius: var(--radius-sm);
-  box-shadow: 0 0 0 100vmax rgba(14, 16, 20, 0.45);
+  inset: 20% 12%;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-sm, 6px);
+  box-shadow: 0 0 0 100vmax rgba(6, 8, 13, 0.65);
   pointer-events: none;
+  transition: border-color 0.3s ease;
 }
 
-.cargando, .hint {
+.marco.scanning {
+  border-color: var(--accent, #a3e635);
+}
+
+/* Línea Láser Dinámica */
+.linea-laser {
   position: absolute;
-  bottom: var(--sp-2);
   left: 0;
   right: 0;
-  text-align: center;
-  font-size: var(--fs-xs);
-  font-weight: 500;
-  padding: 0 var(--sp-2);
+  height: 2px;
+  background: var(--accent, #a3e635);
+  box-shadow: 0 0 8px var(--accent, #a3e635);
+  animation: laserSweep 2.2s linear infinite;
 }
 
-.hint {
-  color: var(--text);
+@keyframes laserSweep {
+  0% { top: 0%; }
+  50% { top: 100%; }
+  100% { top: 0%; }
+}
+
+.status-text {
+  position: absolute;
+  bottom: var(--sp-2, 0.75rem);
+  left: 1rem;
+  right: 1rem;
+  text-align: center;
+  font-size: var(--fs-xs, 0.8rem);
+  font-weight: 500;
+  margin: 0;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9);
 }
 
-/* Toasts Internos Animados */
+.hint {
+  color: #cbd5e1;
+}
+
+.text-pulse {
+  animation: pulseOpacity 1.5s ease-in-out infinite;
+  color: #64748b;
+}
+
+@keyframes pulseOpacity {
+  50% { opacity: 0.5; }
+}
+
+/* HUD de Toasts Internos Animados */
 .toasts {
   position: absolute;
-  top: var(--sp-2);
-  left: var(--sp-2);
-  right: var(--sp-2);
+  top: var(--sp-2, 0.75rem);
+  left: var(--sp-2, 0.75rem);
+  right: var(--sp-2, 0.75rem);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--sp-1);
+  gap: var(--sp-1, 0.4rem);
   pointer-events: none;
 }
 
 .toast {
-  font-family: var(--font-display);
+  font-family: var(--font-display, sans-serif);
+  状况: 700;
   font-weight: 700;
-  font-size: var(--fs-sm);
-  padding: 0.4rem 1rem;
-  border-radius: var(--radius-pill);
-  animation: pop 0.22s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
-  box-shadow: var(--shadow);
+  font-size: var(--fs-sm, 0.88rem);
+  padding: 0.45rem 1.1rem;
+  border-radius: 50px;
+  animation: pop 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
 }
 
-.toast.ok { background: var(--accent); color: #11140a; }
-.toast.no { background: var(--warn); color: #2a1d00; }
+.toast.ok { background: var(--accent, #a3e635); color: #111422; }
+.toast.no { background: var(--warn, #f87171); color: #ffffff; }
 
 @keyframes pop {
   from { transform: scale(0.85); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
 }
 
-/* Caja de Error */
+/* Bloque de Errores Críticos */
 .error-box {
-  padding: var(--sp-4);
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  margin-bottom: var(--sp-3);
+  padding: var(--sp-4, 1.5rem);
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px dashed rgba(239, 68, 68, 0.18);
+  border-radius: var(--radius-sm, 6px);
+  margin-bottom: var(--sp-3, 1rem);
   text-align: center;
 }
 
 .err-txt {
-  font-size: var(--fs-sm);
+  color: #f87171;
+  font-size: var(--fs-sm, 0.88rem);
   line-height: 1.5;
+  margin: 0;
+  font-weight: 500;
 }
 
-/* Panel de Cantidades Ajustable */
+/* Ledger Desplegable de Modificación de Unidades */
 .control-panel {
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: var(--sp-2) var(--sp-3);
-  margin-bottom: var(--sp-3);
-  max-height: 160px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.06));
+  border-radius: var(--radius-sm, 6px);
+  padding: 0.75rem 0.9rem;
+  margin-bottom: var(--sp-3, 1rem);
+  max-height: 150px;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 
+/* Scrollbar estilizada sutil para el panel */
+.control-panel::-webkit-scrollbar { width: 5px; }
+.control-panel::-webkit-scrollbar-track { background: transparent; }
+.control-panel::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+
 .cp-label {
-  color: var(--text-dim);
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  margin-bottom: 0.4rem;
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem 0;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .cp-list {
   list-style: none;
+  padding: 0;
+  margin: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1);
+  gap: 0.4rem;
 }
 
 .cp-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--sp-2);
-  padding: 0.2rem 0;
+  gap: var(--sp-2, 0.75rem);
+  padding: 0.15rem 0;
 }
 
 .cp-nombre {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-sm, 0.88rem);
   font-weight: 500;
+  color: #e2e8f0;
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -343,27 +458,27 @@ function enviarManual() {
 .cp-ctrl {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.5rem;
 }
 
-/* Botón Táctil de Sumar/Restar */
+/* Botones con Target Táctil Incrementado a 44px */
 .cp-btn {
-  width: 38px;
-  height: 38px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--bg-card);
-  color: var(--text);
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.06));
+  background: var(--bg-card, #111422);
+  color: #ffffff;
   font-size: 1.2rem;
   cursor: pointer;
   display: grid;
   place-items: center;
-  transition: transform 0.05s ease, background 0.2s;
+  transition: transform 0.05s ease, background-color 0.15s, border-color 0.15s;
 }
 
 .cp-btn:hover {
-  background: var(--bg-hover);
-  border-color: var(--text-faint);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
 .cp-btn:active {
@@ -371,44 +486,80 @@ function enviarManual() {
 }
 
 .cp-cant {
-  min-width: 24px;
+  min-width: 28px;
   text-align: center;
   font-weight: 700;
-  font-family: var(--font-display);
-  font-size: var(--fs-base);
+  color: #ffffff;
+  font-family: var(--font-display, sans-serif);
+  font-size: var(--fs-base, 1rem);
+  font-variant-numeric: tabular-nums;
 }
 
-/* Formulario de Emergencia / Manual */
+/* Entrada Manual de Respaldo */
 .manual {
-  margin-bottom: var(--sp-3);
+  margin-bottom: var(--sp-3, 1rem);
 }
 
 .manual-row {
   display: flex;
-  gap: var(--sp-2);
+  gap: var(--sp-2, 0.75rem);
 }
 
-.manual-row input {
+.manual-row .inp {
   flex: 1;
+  background: rgba(0, 0, 0, 0.15); 
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.06));
+  border-radius: 6px; 
+  padding: 0.7rem 0.9rem; 
+  color: #ffffff; 
+  min-height: 44px;
+  font-size: 0.92rem;
+  transition: border-color 0.15s ease;
+}
+
+.manual-row .inp:focus {
+  outline: none;
+  border-color: var(--accent, #a3e635);
+}
+
+.manual-row .btn {
+  height: 44px;
+  padding: 0 1.2rem;
+  font-weight: 600;
+  font-size: 0.88rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.manual-row .btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .terminar {
-  min-height: var(--touch);
+  min-height: 46px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  border-radius: 6px;
+  cursor: pointer;
 }
 
-/* Optimización Responsive: Adaptación Nativa en Celulares */
+/* Animaciones Estándar de Entrada */
+.fade-up {
+  opacity: 0;
+  transform: translateY(8px);
+  animation: slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes slideUp { to { opacity: 1; transform: translateY(0); } }
+
+/* Optimización Responsive */
 @media (max-width: 560px) {
   .esc-card {
-    padding-bottom: 3.5rem; /* Resguardo táctil inferior para gestos del OS móvil */
+    padding-bottom: 2rem; 
   }
-  
   .video-wrap {
-    aspect-ratio: 16 / 11; /* Un poco más compacto en pantallas verticales */
-  }
-  
-  .cp-btn {
-    width: 44px; /* Meta táctil optimizada para dedos veloces */
-    height: 44px;
+    aspect-ratio: 16 / 11 !important; /* Más plano para no empujar los controles táctiles fuera del viewport móvil */
   }
 }
 </style>

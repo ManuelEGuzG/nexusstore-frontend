@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/services/api'
 import { usePosStore } from '@/stores/pos'
@@ -19,7 +19,7 @@ const mostrarMontoLibre = ref(false)
 const mostrarPago = ref(false)
 const mostrarTiquete = ref(false)
 const montoLibre = ref('')
-const carritoAbierto = ref(false) // panel del carrito en móvil
+const carritoAbierto = ref(false) 
 
 const mostrarEscaner = ref(false)
 const escanerRef = ref<any>(null)
@@ -27,11 +27,14 @@ const escanerRef = ref<any>(null)
 const clientes = ref<{ id: number; nombre: string; saldo: number }[]>([])
 const clienteSeleccionado = ref<number | null>(null)
 
+const inputMontoRef = ref<HTMLInputElement | null>(null)
+
 const productosFiltrados = computed(() => {
   if (!busqueda.value) return productos.value
   const q = busqueda.value.toLowerCase()
   return productos.value.filter((p) => p.nombre.toLowerCase().includes(q))
 })
+
 const totalItems = computed(() => pos.items.reduce((s, it) => s + it.cantidad, 0))
 
 onMounted(async () => {
@@ -41,10 +44,19 @@ onMounted(async () => {
   try {
     const { data } = await api.get('/products')
     productos.value = data
-  } catch { /* sin productos, igual se vende por monto libre */ }
+  } catch { /* Venta por monto libre disponible */ }
 })
 
-function fmt(n: number) { return '₡' + Number(n).toLocaleString('es-CR') }
+function fmt(n: number) { 
+  return '₡' + Number(n).toLocaleString('es-CR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) 
+}
+
+function abrirMontoLibre() {
+  mostrarMontoLibre.value = true
+  nextTick(() => {
+    inputMontoRef.value?.focus()
+  })
+}
 
 function confirmarMontoLibre() {
   const m = parseFloat(montoLibre.value)
@@ -75,13 +87,18 @@ function ajustarCantidadEscaner(productId: number, delta: number) {
 
 async function abrirPago() {
   if (pos.vacio) return
-  try { const { data } = await api.get('/customers'); clientes.value = data } catch { clientes.value = [] }
+  try { 
+    const { data } = await api.get('/customers')
+    clientes.value = data 
+  } catch { 
+    clientes.value = [] 
+  }
   mostrarPago.value = true
 }
 
 const procesando = ref(false)
 async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
-  if (tipo === 'fiado' && !clienteSeleccionado.value) { alert('Seleccioná un cliente para el fiado.'); return }
+  if (tipo === 'fiado' && !clienteSeleccionado.value) return
   procesando.value = true
   try {
     await pos.finalizar({ tipoPago: tipo, customerId: tipo === 'fiado' ? clienteSeleccionado.value : null })
@@ -89,27 +106,48 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
     clienteSeleccionado.value = null
     carritoAbierto.value = false
     mostrarTiquete.value = true
-  } finally { procesando.value = false }
+  } finally { 
+    procesando.value = false 
+  }
 }
 </script>
 
 <template>
   <div class="pos">
+    <!-- Header Principal -->
     <header class="pos-top">
-      <button class="back" @click="router.push('/')">←</button>
-      <strong class="pos-title">Punto de venta</strong>
+      <button class="back" @click="router.push('/')" aria-label="Volver">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+      </button>
+      <h1 class="pos-title">Punto de Venta</h1>
       <div class="estado">
-        <span class="chip" :class="enLinea ? 'on' : 'off'">{{ enLinea ? 'En línea' : 'Sin conexión' }}</span>
-        <span v-if="pos.pendientes > 0" class="chip pend">{{ pos.pendientes }}</span>
+        <span class="chip" :class="enLinea ? 'on' : 'off'">
+          <span class="indicator"></span>
+          {{ enLinea ? 'En línea' : 'Sin conexión' }}
+        </span>
+        <Transition name="scale">
+          <span v-if="pos.pendientes > 0" class="chip pend">{{ pos.pendientes }} pendientes</span>
+        </Transition>
       </div>
     </header>
 
+    <!-- Cuerpo del POS -->
     <div class="pos-body">
+      <!-- Panel Izquierdo: Catálogo y Búsqueda -->
       <section class="panel-prod">
         <div class="acciones">
-          <input v-model="busqueda" class="buscar" type="search" placeholder="Buscar producto…" />
-          <button class="btn btn-ghost accion-btn" @click="mostrarEscaner = true">Escanear</button>
-          <button class="btn btn-primary accion-btn" @click="mostrarMontoLibre = true">Monto libre</button>
+          <div class="buscar-contenedor">
+            <svg class="buscar-icono" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input v-model="busqueda" class="buscar" type="search" placeholder="Buscar producto por nombre..." />
+          </div>
+          <button class="btn btn-ghost accion-btn" @click="mostrarEscaner = true">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"></path><path d="M17 3h2a2 2 0 0 1 2 2v2"></path><path d="M21 17v2a2 2 0 0 1-2 2h-2"></path><path d="M7 21H5a2 2 0 0 1-2-2v-2"></path></svg>
+            Escanear
+          </button>
+          <button class="btn btn-primary accion-btn" @click="abrirMontoLibre">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            Monto libre
+          </button>
         </div>
 
         <div v-if="productosFiltrados.length" class="grid-prod">
@@ -118,92 +156,133 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
             <span class="prod-precio">{{ fmt(p.precio) }}</span>
           </button>
         </div>
-        <div v-else class="vacio-prod card">
+        <div v-else class="vacio-prod card animate-fade-in">
+          <svg class="vacio-icono" xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line><polygon points="12 22.08 12 12 3 6.92 3 17.08 12 22.08"></polygon><polygon points="12 12 21 6.92 21 17.08 12 22.08 12 12"></polygon><polygon points="12 12 3 6.92 12 1.84 21 6.92 12 12"></polygon></svg>
           <p class="vp-title">No hay productos cargados</p>
-          <p class="dim">Podés vender por monto libre, escanear, o cargar productos.</p>
+          <p class="dim">Podés vender por monto libre, escanear códigos de barras o sincronizar el catálogo.</p>
         </div>
       </section>
 
+      <!-- Panel Derecho: Carrito de Ventas -->
       <section class="panel-cart card" :class="{ abierto: carritoAbierto }">
         <div class="cart-head">
-          <h2>Venta actual</h2>
-          <button class="cerrar-cart" @click="carritoAbierto = false">×</button>
+          <h2>Venta Actual</h2>
+          <button class="cerrar-cart" @click="carritoAbierto = false" aria-label="Cerrar carrito">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
         </div>
 
         <div v-if="pos.vacio" class="cart-vacio">
-          <p>Carrito vacío</p>
-          <p class="dim">Tocá un producto, escaneá o usá monto libre.</p>
+          <svg class="vacio-cart-icono" xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+          <p class="vc-title">El carrito está vacío</p>
+          <p class="dim">Seleccioná ítems del catálogo o utilizá el escáner de códigos.</p>
         </div>
 
-        <ul v-else class="cart-items">
-          <li v-for="(it, i) in pos.items" :key="i" class="cart-item">
-            <div class="ci-top">
-              <span class="ci-desc">{{ it.descripcion }}</span>
-              <button class="qx" @click="pos.quitar(i)">×</button>
-            </div>
-            <div class="ci-bottom">
-              <div class="ci-ctrl">
-                <button class="qbtn" @click="pos.cambiarCantidad(i, it.cantidad - 1)">−</button>
-                <span class="qcant">{{ it.cantidad }}</span>
-                <button class="qbtn" @click="pos.cambiarCantidad(i, it.cantidad + 1)">+</button>
+        <div v-else class="cart-contenido">
+          <ul class="cart-items">
+            <li v-for="(it, i) in pos.items" :key="i" class="cart-item">
+              <div class="ci-top">
+                <span class="ci-desc">{{ it.descripcion }}</span>
+                <button class="qx" @click="pos.quitar(i)" aria-label="Eliminar ítem">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
               </div>
-              <span class="ci-sub">{{ fmt(it.cantidad * it.precio_unitario - it.descuento) }}</span>
-            </div>
-          </li>
-        </ul>
+              <div class="ci-bottom">
+                <div class="ci-ctrl">
+                  <button class="qbtn" :disabled="it.whitespace || it.cantidad <= 1" @click="pos.cambiarCantidad(i, it.cantidad - 1)">−</button>
+                  <span class="qcant">{{ it.whitespace || it.whitespace || it.whitespace || it.cantidad }}</span>
+                  <button class="qbtn" @click="pos.cambiarCantidad(i, it.cantidad + 1)">+</button>
+                </div>
+                <span class="ci-sub">{{ fmt(it.cantidad * it.precio_unitario - it.descuento) }}</span>
+              </div>
+            </li>
+          </ul>
 
-        <div class="cart-footer">
-          <div class="total-row">
-            <span>Total</span>
-            <span class="total-num">{{ fmt(pos.total) }}</span>
+          <div class="cart-footer">
+            <div class="total-row">
+              <span>Total a cobrar</span>
+              <span class="total-num">{{ fmt(pos.total) }}</span>
+            </div>
+            <button class="btn btn-primary btn-block cobrar" :disabled="pos.vacio" @click="abrirPago">
+              Proceder al Pago
+            </button>
           </div>
-          <button class="btn btn-primary btn-block cobrar" :disabled="pos.vacio" @click="abrirPago">
-            Cobrar {{ fmt(pos.total) }}
-          </button>
         </div>
       </section>
     </div>
 
-    <div v-if="!pos.vacio" class="cart-bar" @click="carritoAbierto = true">
+    <!-- Barra de estado flotante inferior en Móvil -->
+    <div v-if="!pos.vacio" class="cart-bar" :class="{ 'cart-bar-oculto': carritoAbierto }" @click="carritoAbierto = true">
       <div class="cb-info">
-        <span class="cb-count">{{ totalItems }} {{ totalItems === 1 ? 'ítem' : 'ítems' }}</span>
+        <span class="cb-count">{{ totalItems }} {{ totalItems === 1 ? 'ítem' : 'ítems' }} en cuenta</span>
         <span class="cb-total">{{ fmt(pos.total) }}</span>
       </div>
-      <span class="cb-ver">Ver venta ›</span>
+      <span class="cb-ver">Ver detalle ›</span>
     </div>
 
-    <div v-if="carritoAbierto" class="cart-overlay" @click="carritoAbierto = false"></div>
+    <!-- Modales e Interacciones globales -->
+    <Transition name="fade">
+      <div v-if="carritoAbierto" class="cart-overlay" @click="carritoAbierto = false"></div>
+    </Transition>
 
-    <div v-if="mostrarMontoLibre" class="modal-bg" @click.self="mostrarMontoLibre = false">
-      <div class="modal">
-        <h3>Monto libre</h3>
-        <input v-model="montoLibre" type="number" inputmode="decimal" placeholder="₡ 0" class="monto-input" @keyup.enter="confirmarMontoLibre" autofocus />
-        <div class="modal-acciones">
-          <button class="btn btn-ghost" @click="mostrarMontoLibre = false">Cancelar</button>
-          <button class="btn btn-primary" @click="confirmarMontoLibre">Agregar</button>
+    <!-- Modal: Monto Libre -->
+    <Transition name="modal-pop">
+      <div v-if="mostrarMontoLibre" class="modal-bg" @click.self="mostrarMontoLibre = false">
+        <div class="modal">
+          <div class="modal-header">
+            <h3>Monto libre</h3>
+            <p class="dim">Ingresá un valor directo para añadirlo a la cuenta actual.</p>
+          </div>
+          <input 
+            ref="inputMontoRef"
+            v-model="montoLibre" 
+            type="number" 
+            inputmode="decimal" 
+            placeholder="₡ 0" 
+            class="monto-input" 
+            @keyup.enter="confirmarMontoLibre" 
+          />
+          <div class="modal-acciones">
+            <button class="btn btn-ghost" @click="mostrarMontoLibre = false">Cancelar</button>
+            <button class="btn btn-primary" :disabled="!montoLibre || parseFloat(montoLibre) <= 0" @click="confirmarMontoLibre">Agregar al Carrito</button>
+          </div>
         </div>
       </div>
-    </div>
+    </Transition>
 
-    <div v-if="mostrarPago" class="modal-bg" @click.self="mostrarPago = false">
-      <div class="modal">
-        <h3>Cobrar {{ fmt(pos.total) }}</h3>
-        <p class="dim pago-sub">¿Cómo paga?</p>
-        <div class="pago-opciones">
-          <button class="btn btn-primary pago-op" :disabled="procesando" @click="cobrar('efectivo')">Efectivo</button>
-          <button class="btn btn-ghost pago-op" :disabled="procesando" @click="cobrar('manual')">SINPE / Tarjeta</button>
+    <!-- Modal: Procesar Transacción / Pago -->
+    <Transition name="modal-pop">
+      <div v-if="mostrarPago" class="modal-bg" @click.self="mostrarPago = false">
+        <div class="modal">
+          <div class="modal-header">
+            <h3>Cobrar {{ fmt(pos.total) }}</h3>
+            <p class="dim">Seleccioná el método de liquidación para finalizar.</p>
+          </div>
+          <div class="pago-opciones">
+            <button class="btn btn-primary pago-op" :disabled="procesando" @click="cobrar('efectivo')">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="12" cy="12" r="2"></circle><path d="M6 12h.01M18 12h.01"></path></svg>
+              Efectivo
+            </button>
+            <button class="btn btn-secondary pago-op" :disabled="procesando" @click="cobrar('manual')">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
+              SINPE Móvil / Tarjeta
+            </button>
+          </div>
+          <div class="fiado-bloque">
+            <p class="dim pago-sub">Cargar Cuenta Corriente (Crédito):</p>
+            <select v-model="clienteSeleccionado" class="select-cliente">
+              <option :value="null">Elegí un cliente de la lista…</option>
+              <option v-for="c in clientes" :key="c.id" :value="c.id">{{ c.nombre }} (Saldo: {{ fmt(c.saldo) }})</option>
+            </select>
+            <button class="btn btn-warn btn-block fiar" :disabled="procesando || !clienteSeleccionado" @click="cobrar('fiado')">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+              Confirmar Cuenta Corriente
+            </button>
+          </div>
+          <button class="btn btn-ghost btn-block cerrar-modal" @click="mostrarPago = false">Cancelar</button>
         </div>
-        <div class="fiado-bloque">
-          <p class="dim pago-sub">O a fiado:</p>
-          <select v-model="clienteSeleccionado" class="select-cliente">
-            <option :value="null">Elegí un cliente…</option>
-            <option v-for="c in clientes" :key="c.id" :value="c.id">{{ c.nombre }} ({{ fmt(c.saldo) }})</option>
-          </select>
-          <button class="btn btn-ghost btn-block fiar" :disabled="procesando || !clienteSeleccionado" @click="cobrar('fiado')">Cargar a fiado</button>
-        </div>
-        <button class="btn btn-ghost btn-block cerrar-modal" @click="mostrarPago = false">Cancelar</button>
       </div>
-    </div>
+    </Transition>
 
     <ComprobanteTiquete
       v-if="mostrarTiquete && pos.ultimaVenta"
@@ -219,48 +298,101 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 </template>
 
 <style scoped>
-/* Estructura Base Base (Móvil Primero para estabilidad) */
+/* ==========================================================================
+   SISTEMA DE DISEÑO INTERNAZIONAL / ENTERPRISE DARK
+   ========================================================================== */
 .pos { 
   height: 100vh; 
   height: 100dvh; 
   display: flex; 
   flex-direction: column; 
-  overflow: hidden; 
+  overflow: hidden;
+  background-color: var(--bg-main, #0c0e17);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
+/* Header Principal */
 .pos-top {
   display: flex; 
   align-items: center; 
-  gap: 0.8rem;
-  padding: 0.8rem clamp(0.9rem, 2vw, 1.4rem); 
-  border-bottom: 1px solid var(--border);
+  gap: 1rem;
+  padding: 0.75rem clamp(1rem, 3vw, 1.5rem); 
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.06));
+  background: var(--bg-header, #121522);
   flex-shrink: 0;
 }
 
 .back {
-  width: 42px; 
-  height: 42px; 
+  width: 40px; 
+  height: 40px; 
   flex-shrink: 0; 
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border); 
-  background: transparent; 
-  color: var(--text);
-  font-size: 1.2rem; 
+  border-radius: var(--radius-sm, 8px);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08)); 
+  background: rgba(255, 255, 255, 0.02); 
+  color: var(--text, #e2e8f0);
   cursor: pointer;
   display: inline-grid;
   place-items: center;
+  transition: all 0.2s ease;
 }
-.back:hover { border-color: var(--accent); }
-.pos-title { font-family: var(--font-display); font-size: var(--fs-md); flex: 1; }
-.estado { display: flex; gap: 0.4rem; align-items: center; }
+.back:hover { 
+  background: rgba(255, 255, 255, 0.06); 
+  border-color: var(--accent, #a3e635);
+  color: var(--accent, #a3e635);
+}
 
-/* El cuerpo por defecto en móvil se apila verticalmente */
+.pos-title { 
+  font-size: clamp(1.1rem, 2vw, 1.25rem); 
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+  flex: 1; 
+  margin: 0;
+}
+
+/* Estado de Red e Indicadores */
+.estado { display: flex; gap: 0.6rem; align-items: center; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 4px;
+  border: 1px solid transparent;
+}
+.chip.on {
+  background: rgba(34, 197, 94, 0.08);
+  color: #4ade80;
+  border-color: rgba(34, 197, 94, 0.15);
+}
+.chip.on .indicator {
+  width: 6px; height: 6px; background: #4ade80; border-radius: 50%;
+}
+.chip.off {
+  background: rgba(239, 68, 68, 0.08);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.15);
+}
+.chip.off .indicator {
+  width: 6px; height: 6px; background: #f87171; border-radius: 50%;
+}
+.chip.pend {
+  background: rgba(234, 179, 8, 0.1);
+  color: #fde047;
+  border-color: rgba(234, 179, 8, 0.2);
+  border-radius: 4px;
+}
+
+/* Layout del cuerpo */
 .pos-body { 
   flex: 1; 
   display: flex;
   flex-direction: column;
   gap: 1rem; 
-  padding: clamp(0.9rem, 2vw, 1.4rem); 
+  padding: clamp(0.75rem, 2vw, 1.25rem); 
   overflow: hidden; 
   min-height: 0; 
 }
@@ -272,195 +404,306 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   min-height: 0; 
 }
 
-/* Acciones fluidas en móvil para evitar desbordes */
+/* Filtros y Acciones superiores */
 .acciones { 
   display: flex; 
-  gap: 0.5rem; 
+  gap: 0.6rem; 
   margin-bottom: 1rem; 
   flex-shrink: 0; 
-  flex-wrap: wrap; /* Permite saltar de línea en pantallas super chicas como un iPhone SE */
+  flex-wrap: wrap; 
 }
 
-.buscar {
-  flex: 1; 
-  min-width: 140px; 
-  background: var(--bg-elev); 
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm); 
-  padding: 0.75rem 0.9rem; 
-  color: var(--text);
-  font-size: var(--fs-base); 
-  min-height: var(--touch);
+.buscar-contenedor {
+  position: relative;
+  flex: 1;
+  min-width: 200px;
 }
-.buscar:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.buscar-icono {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: rgba(255, 255, 255, 0.3);
+  pointer-events: none;
+}
+.buscar {
+  width: 100%;
+  background: #141824; 
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px; 
+  padding: 0.65rem 0.9rem 0.65rem 2.4rem; 
+  color: #ffffff;
+  font-size: 0.9rem; 
+  transition: all 0.2s ease;
+}
+.buscar:focus { 
+  outline: none; 
+  border-color: var(--accent, #a3e635); 
+  box-shadow: 0 0 0 3px rgba(163, 230, 53, 0.12); 
+}
+.buscar-contenedor:focus-within .buscar-icono {
+  color: var(--accent, #a3e635);
+}
+
+/* Botones Base */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1.1rem;
+  font-weight: 600;
+  font-size: 0.88rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn-primary {
+  background: var(--accent, #a3e635);
+  color: #000000;
+}
+.btn-primary:hover:not(:disabled) {
+  background: #bef264;
+}
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.04);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.btn-secondary:hover:not(:disabled) { background: rgba(255, 255, 255, 0.08); }
+
+.btn-ghost {
+  background: transparent;
+  color: #cbd5e1;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+.btn-warn {
+  background: rgba(234, 179, 8, 0.08);
+  color: #fde047;
+  border-color: rgba(234, 179, 8, 0.2);
+}
+.btn-warn:hover:not(:disabled) { background: rgba(234, 179, 8, 0.15); }
+.btn-block { width: 100%; }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
 .accion-btn { 
-  flex: 1; /* Hace que compartan el espacio sobrante equitativamente en móvil */
-  min-width: 95px;
+  flex: 1; 
+  min-width: 110px;
   white-space: nowrap;
 }
 
-/* Grid adaptable: 2 columnas mínimo en móviles normales, escala solo en pantallas grandes */
+/* Catálogo Grid */
 .grid-prod {
   display: grid; 
-  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
   gap: 0.6rem; 
   overflow-y: auto; 
   align-content: start; 
-  padding-right: 0.3rem; 
+  padding-right: 0.25rem; 
   min-height: 0;
   flex: 1;
 }
 
+/* Tarjeta de Producto */
 .prod-btn {
-  background: var(--bg-card); 
-  border: 1px solid var(--border); 
-  border-radius: var(--radius-sm);
-  padding: 0.85rem; 
+  background: #111422; 
+  border: 1px solid rgba(255, 255, 255, 0.06); 
+  border-radius: 8px;
+  padding: 0.9rem; 
   cursor: pointer; 
   display: flex; 
   flex-direction: column; 
-  gap: 0.4rem;
+  gap: 0.5rem;
   text-align: left; 
-  min-height: 92px; 
+  min-height: 100px; 
   justify-content: space-between;
-  transition: border-color 0.15s ease, transform 0.08s ease, background 0.15s ease;
+  position: relative;
+  transition: all 0.15s ease;
 }
-.prod-btn:hover { border-color: var(--accent); background: var(--bg-hover); }
-.prod-btn:active { transform: scale(0.97); }
-.prod-nombre { font-weight: 600; font-size: var(--fs-sm); line-height: 1.25; color: white; }
-.prod-precio { color: var(--accent); font-family: var(--font-display); font-weight: 700; font-size: var(--fs-md); }
+.prod-btn:hover { 
+  border-color: var(--accent, #a3e635); 
+  background: #15192b;
+}
+.prod-btn:active { transform: scale(0.98); }
 
-.vacio-prod { padding: 2.5rem 1.5rem; text-align: center; }
-.vp-title { font-family: var(--font-display); font-weight: 600; font-size: var(--fs-md); margin-bottom: 0.4rem; }
+.prod-nombre { font-weight: 500; font-size: 0.85rem; line-height: 1.3; color: #f1f5f9; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.prod-precio { color: var(--accent, #a3e635); font-weight: 700; font-size: 1rem; letter-spacing: -0.01em; }
 
-/* Carrito Estilo Drawer (Móvil por defecto) */
+/* Estados vacíos corporativos (Sin emojis, uso de SVG sutiles) */
+.vacio-prod, .cart-vacio { 
+  padding: 3rem 1.5rem; 
+  text-align: center; 
+  display: flex; 
+  flex-direction: column; 
+  align-items: center; 
+  justify-content: center;
+  background: rgba(255,255,255,0.01);
+  border: 1px dashed rgba(255,255,255,0.06);
+  border-radius: 8px;
+}
+.vacio-icono, .vacio-cart-icono { color: rgba(255, 255, 255, 0.2); margin-bottom: 1rem; }
+.vp-title, .vc-title { font-weight: 600; font-size: 0.95rem; margin-bottom: 0.35rem; color: #ffffff; }
+.dim { color: rgba(255, 255, 255, 0.4); font-size: 0.82rem; line-height: 1.4; margin: 0; max-width: 280px; }
+
+/* ==========================================================================
+   PANEL PANEL-CART (Estructura Drawer nativa para Móvil)
+   ========================================================================== */
 .panel-cart { 
-  padding: 1.3rem; 
   display: flex; 
   flex-direction: column; 
   min-height: 0; 
   position: fixed; 
-  left: 0; 
-  right: 0; 
-  bottom: 0; 
+  left: 0; right: 0; bottom: 0; 
   z-index: 55;
   max-height: 85vh; 
-  border-radius: var(--radius) var(--radius) 0 0;
+  border-radius: 12px 12px 0 0;
   transform: translateY(110%); 
   transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 -10px 40px rgba(0,0,0,0.55);
-  background: var(--bg-card);
+  box-shadow: 0 -12px 32px rgba(0,0,0,0.5);
+  background: #111422;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  padding: 1.25rem;
 }
 .panel-cart.abierto { transform: translateY(0); }
-.cart-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
-.cerrar-cart { display: block; background: none; border: none; color: var(--text-dim); font-size: 1.8rem; cursor: pointer; line-height: 1; padding: 0.2rem; }
+.cart-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; flex-shrink: 0; }
+.cart-head h2 { font-size: 1rem; font-weight: 600; color: #ffffff; margin: 0; text-transform: uppercase; letter-spacing: 0.03em; }
+.cerrar-cart { background: rgba(255,255,255,0.04); border: none; color: #ffffff; width: 32px; height: 32px; border-radius: 6px; cursor: pointer; display: grid; place-items: center; transition: background 0.2s; }
+.cerrar-cart:hover { background: rgba(255,255,255,0.1); }
 
-.cart-vacio { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 0.3rem; padding: 2rem 0; }
-.cart-vacio p:first-child { font-family: var(--font-display); font-weight: 600; }
+.cart-contenido { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.cart-items { list-style: none; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 0.4rem; min-height: 0; padding: 0 0.2rem 0 0; margin: 0; }
+.cart-item { background: #151926; border-radius: 6px; padding: 0.75rem; border: 1px solid rgba(255,255,255,0.02); }
 
-.cart-items { list-style: none; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 0.6rem; min-height: 0; padding-right: 0.2rem; }
-.cart-item { background: var(--bg-elev); border-radius: var(--radius-sm); padding: 0.75rem 0.85rem; }
-.ci-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; margin-bottom: 0.5rem; }
-.ci-desc { font-weight: 500; font-size: var(--fs-sm); line-height: 1.3; }
-.qx { background: none; border: none; color: var(--danger); font-size: 1.3rem; cursor: pointer; line-height: 1; flex-shrink: 0; padding: 0.1rem 0.3rem; }
+.ci-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; margin-bottom: 0.5rem; }
+.ci-desc { font-weight: 500; font-size: 0.85rem; line-height: 1.35; color: #e2e8f0; }
+.qx { background: rgba(239, 68, 68, 0.08); border: none; color: #f87171; width: 24px; height: 24px; border-radius: 4px; cursor: pointer; display: grid; place-items: center; transition: all 0.15s; flex-shrink: 0; }
+.qx:hover { background: #ef4444; color: #ffffff; }
+
 .ci-bottom { display: flex; align-items: center; justify-content: space-between; }
-.ci-ctrl { display: flex; align-items: center; gap: 0.5rem; }
-.qbtn { width: 36px; height: 36px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); font-size: 1.3rem; cursor: pointer; display: grid; place-items: center; }
-.qbtn:hover { border-color: var(--accent); }
-.qcant { min-width: 26px; text-align: center; font-weight: 700; font-family: var(--font-display); }
-.ci-sub { font-weight: 600; font-size: var(--fs-sm); }
+.ci-ctrl { display: flex; align-items: center; background: rgba(0,0,0,0.15); border-radius: 6px; border: 1px solid rgba(255,255,255,0.04); }
+.qbtn { width: 30px; height: 30px; border-radius: 4px; border: none; background: transparent; color: #ffffff; font-size: 1.1rem; cursor: pointer; display: grid; place-items: center; }
+.qbtn:hover:not(:disabled) { background: rgba(255,255,255,0.06); color: var(--accent, #a3e635); }
+.qbtn:disabled { opacity: 0.15; cursor: not-allowed; }
+.qcant { min-width: 28px; text-align: center; font-weight: 600; font-size: 0.88rem; color: #ffffff; }
+.ci-sub { font-weight: 600; font-size: 0.9rem; color: #f8fafc; }
 
-.cart-footer { padding-top: 0.9rem; margin-top: 0.5rem; border-top: 1px solid var(--border); flex-shrink: 0; }
+.cart-footer { padding-top: 1rem; margin-top: 0.5rem; border-top: 1px solid rgba(255, 255, 255, 0.08); flex-shrink: 0; }
 .total-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.8rem; }
-.total-row span:first-child { color: var(--text-dim); }
-.total-num { font-family: var(--font-display); font-size: var(--fs-xl); font-weight: 800; color: var(--accent); }
-.cobrar { font-size: var(--fs-md); min-height: 54px; }
+.total-row span:first-child { color: rgba(255,255,255,0.4); font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.total-num { font-size: 1.4rem; font-weight: 700; color: var(--accent, #a3e635); letter-spacing: -0.01em; }
+.cobrar { font-size: 0.95rem; font-weight: 600; min-height: 46px; }
 
-/* Barra inferior móvil fija activa */
+/* Barra Flotante Inferior (Móvil Fijo Activo) */
 .cart-bar { 
   display: flex; 
   align-items: center; 
   justify-content: space-between;
   position: fixed; 
-  left: 0; 
-  right: 0; 
-  bottom: 0; 
+  left: 12px; right: 12px; bottom: 12px; 
   z-index: 50;
-  background: var(--accent); 
-  color: #11140a; 
+  background: var(--accent, #a3e635); 
+  color: #07090f; 
   cursor: pointer;
-  padding: 0.85rem 1.2rem; 
-  box-shadow: 0 -6px 24px rgba(0,0,0,0.35);
+  padding: 0.7rem 1.1rem; 
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(163, 230, 53, 0.25);
+  transition: all 0.2s ease;
 }
+.cart-bar-oculto { transform: translateY(150%) !important; pointer-events: none; }
 .cb-info { display: flex; flex-direction: column; }
-.cb-count { font-size: var(--fs-xs); font-weight: 600; opacity: 0.8; }
-.cb-total { font-family: var(--font-display); font-weight: 800; font-size: var(--fs-md); }
-.cb-ver { font-family: var(--font-display); font-weight: 700; font-size: var(--fs-sm); }
+.cb-count { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; opacity: 0.7; letter-spacing: 0.02em; }
+.cb-total { font-weight: 700; font-size: 1.1rem; letter-spacing: -0.01em; }
+.cb-ver { font-weight: 600; font-size: 0.85rem; }
 
-.cart-overlay { display: block; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 54; }
+.cart-overlay { position: fixed; inset: 0; background: rgba(5, 6, 11, 0.75); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); z-index: 54; }
 
-/* Modales Optimizados y Seguros para Móviles */
+/* ==========================================================================
+   MODALES RIGUROSOS & PROFESIONALES
+   ========================================================================== */
 .modal-bg {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+  position: fixed; inset: 0; background: rgba(4, 5, 8, 0.8);
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
   display: grid; place-items: center; z-index: 100; padding: 1rem;
 }
 .modal {
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 1.5rem; width: 100%;
-  max-width: 420px; box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+  background: #131622; border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px; padding: 1.5rem; width: 100%;
+  max-width: 390px; box-shadow: 0 20px 48px rgba(0,0,0,0.6);
 }
-.modal h3 { font-family: var(--font-display); font-size: var(--fs-lg); margin-bottom: 0.5rem; }
-.modal-acciones { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 1rem; }
+.modal-header { margin-bottom: 1.25rem; }
+.modal h3 { font-size: 1.15rem; font-weight: 600; color: #ffffff; margin: 0 0 0.25rem 0; }
+.modal-acciones { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.25rem; }
 
 .monto-input {
-  width: 100%; background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius-sm);
-  padding: 0.85rem; color: var(--text); font-size: var(--fs-xl); font-family: var(--font-display);
-  text-align: center; margin: 1rem 0;
+  width: 100%; background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px;
+  padding: 0.85rem; color: var(--accent, #a3e635); font-size: 1.6rem; font-weight: 700;
+  text-align: center; margin: 0.5rem 0; transition: border-color 0.15s;
 }
-.monto-input:focus { outline: none; border-color: var(--accent); }
-.pago-sub { margin: 0.8rem 0 0.5rem; font-size: var(--fs-sm); }
-.pago-opciones { display: flex; flex-direction: column; gap: 0.6rem; }
-.pago-op { width: 100%; font-size: var(--fs-md); min-height: 52px; }
-.fiado-bloque { margin-top: 1.1rem; padding-top: 1.1rem; border-top: 1px solid var(--border); }
-.select-cliente { width: 100%; background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.8rem; color: var(--text); font-size: var(--fs-base); margin-bottom: 0.6rem; min-height: var(--touch); }
-.fiar:not(:disabled):hover { border-color: var(--warn); }
-.cerrar-modal { margin-top: 0.8rem; }
+.monto-input:focus { outline: none; border-color: var(--accent, #a3e635); }
 
-/* ====================== DESKTOP / MONITOR / TABLET HORIZONTAL ====================== */
-@media (min-width: 761px) {
+.pago-sub { margin: 0 0 0.5rem 0; font-size: 0.78rem; text-transform: uppercase; font-weight: 600; letter-spacing: 0.04em; color: rgba(255,255,255,0.35); }
+.pago-opciones { display: flex; flex-direction: column; gap: 0.5rem; }
+.pago-op { width: 100%; font-size: 0.9rem; min-height: 44px; justify-content: flex-start; padding-left: 1.25rem; }
+.pago-op svg { color: rgba(255,255,255,0.6); }
+
+.fiado-bloque { margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid rgba(255,255,255,0.06); }
+.select-cliente { width: 100%; background: #151926; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 0.7rem 0.85rem; color: #ffffff; font-size: 0.88rem; margin-bottom: 0.75rem; min-height: 42px; outline: none; }
+.cerrar-modal { margin-top: 0.75rem; border: none; color: rgba(255,255,255,0.35); }
+.cerrar-modal:hover { color: #ffffff; background: rgba(255,255,255,0.02); }
+
+/* ==========================================================================
+   TRANSITIONS TRANSITIONS VUE (Aceleración nativa)
+   ========================================================================== */
+.fade-enter-active, .fade-leave-active { transition: opacity 0.15s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+.modal-pop-enter-active, .modal-pop-leave-active { transition: all 0.2s ease-out; }
+.modal-pop-enter-from, .modal-pop-leave-to { opacity: 0; transform: scale(0.96); }
+
+.scale-enter-active, .scale-leave-active { transition: all 0.15s ease; }
+.scale-enter-from, .scale-leave-to { opacity: 0; transform: scale(0.9); }
+
+.animate-fade-in { animation: fadeIn 0.25s ease forwards; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ==========================================================================
+   TABLET & DESKTOP (Layout Estático Limpio)
+   ========================================================================== */
+@media (min-width: 768px) {
   .pos-body { 
     display: grid; 
-    grid-template-columns: 1fr 360px; 
+    grid-template-columns: 1fr 340px; 
     grid-template-rows: 100%;
-    gap: 1.2rem; 
+    gap: 1rem; 
   }
 
-  .acciones { 
-    flex-wrap: nowrap; 
-  }
-  .accion-btn { 
-    flex: initial; 
-  }
+  .acciones { flex-wrap: nowrap; }
+  .accion-btn { flex: initial; }
+  .grid-prod { grid-template-columns: repeat(auto-fill, minmax(135px, 1fr)); gap: 0.6rem; }
 
-  .grid-prod {
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: 0.7rem;
-  }
-
-  /* El carrito se vuelve panel estático lateral derecho */
   .panel-cart {
     position: relative;
-    transform: none;
+    transform: none !important;
     max-height: 100%;
     box-shadow: none;
-    border-radius: var(--radius);
-    z-index: auto;
+    border-radius: 8px;
+    z-index: 1;
+    background: #111422;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 1rem;
   }
   .cerrar-cart { display: none; }
-
-  /* Ocultamos elementos móviles */
   .cart-bar { display: none !important; }
   .cart-overlay { display: none !important; }
+}
+
+@media (min-width: 1200px) {
+  .pos-body { grid-template-columns: 1fr 370px; gap: 1.25rem; }
+  .grid-prod { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.7rem; }
 }
 </style>
