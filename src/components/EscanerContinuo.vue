@@ -60,9 +60,9 @@ onMounted(async () => {
     } else if (e?.name === 'NotFoundError') {
       error.value = 'No se encontró una cámara en este dispositivo.'
     } else if (location.protocol === 'http:' && !location.hostname.includes('localhost')) {
-      error.value = 'La cámara necesita HTTPS. Por ahora podés escribir el código a mano.'
+      error.value = 'La cámara necesita una conexión segura (HTTPS). Escribí el código a mano por ahora.'
     } else {
-      error.value = 'No se pudo abrir la cámara: ' + (e?.message || 'error')
+      error.value = 'No se pudo abrir la cámara: ' + (e?.message || 'error remoto')
     }
   }
 })
@@ -85,7 +85,7 @@ function beep(exito: boolean) {
     gain.gain.value = 0.08
     osc.start()
     osc.stop(audioCtx.currentTime + (exito ? 0.08 : 0.18))
-  } catch { /* sin audio, no pasa nada */ }
+  } catch { /* sin soporte de audio, falla silenciosa */ }
 }
 
 // Aviso breve (toast) + beep
@@ -103,10 +103,6 @@ function avisar(texto: string, ok = true) {
 
 defineExpose({ avisar })
 
-function fmt(n: number) {
-  return n
-}
-
 // Entrada manual de respaldo
 const manual = ref('')
 function enviarManual() {
@@ -119,18 +115,18 @@ function enviarManual() {
 </script>
 
 <template>
-  <div class="esc-bg">
-    <div class="esc-card card">
+  <div class="modal-bg esc-bg">
+    <div class="modal esc-card fade-up">
       <div class="esc-header">
         <h3>Escaneando ventas</h3>
-        <button class="cerrar" @click="detener(); emit('cerrar')">Terminar</button>
+        <button class="btn btn-ghost mini" @click="detener(); emit('cerrar')">Terminar</button>
       </div>
 
       <div v-if="!error" class="video-wrap">
         <video ref="videoRef" class="video" autoplay muted playsinline></video>
         <div class="marco"></div>
-        <p v-if="cargando" class="cargando">Abriendo cámara…</p>
-        <p v-else class="hint">Apuntá a cada producto</p>
+        <p v-if="cargando" class="cargando muted">Abriendo cámara…</p>
+        <p v-else class="hint">Apuntá al código de barras del producto</p>
 
         <div class="toasts">
           <div
@@ -145,12 +141,11 @@ function enviarManual() {
       </div>
 
       <div v-else class="error-box">
-        <p class="err-txt">{{ error }}</p>
+        <p class="err-txt warn-text">{{ error }}</p>
       </div>
 
-      <!-- Panel flotante de control de cantidades -->
       <div v-if="items.length" class="control-panel">
-        <p class="cp-label">En la venta ({{ items.length }})</p>
+        <p class="cp-label">Artículos agregados ({{ items.length }})</p>
         <ul class="cp-list">
           <li v-for="(it, i) in items" :key="i" class="cp-item">
             <span class="cp-nombre">{{ it.descripcion }}</span>
@@ -169,14 +164,14 @@ function enviarManual() {
         </ul>
       </div>
 
-      <!-- Entrada manual -->
       <div class="manual">
         <div class="manual-row">
           <input
             v-model="manual"
             type="text"
             inputmode="numeric"
-            placeholder="Código a mano…"
+            class="inp"
+            placeholder="O escribe el código a mano…"
             @keyup.enter="enviarManual"
           />
           <button class="btn btn-ghost" @click="enviarManual">Sumar</button>
@@ -184,77 +179,236 @@ function enviarManual() {
       </div>
 
       <button class="btn btn-primary btn-block terminar" @click="detener(); emit('cerrar')">
-        Terminar de escanear
+        Finalizar Venta
       </button>
     </div>
   </div>
 </template>
 
 <style scoped>
+/* Fondo oscuro con Blur heredado */
 .esc-bg {
-  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.8);
-  display: grid; place-items: center; padding: 1rem; z-index: 70;
-  backdrop-filter: blur(4px);
+  background: rgba(6, 8, 12, 0.85);
+  z-index: 70;
 }
-.esc-card { padding: 1.4rem; width: 100%; max-width: 420px; max-height: 92vh; overflow-y: auto; }
-.esc-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-.esc-header h3 { font-size: 1.2rem; }
-.cerrar {
-  background: none; border: 1px solid var(--border); color: var(--text);
-  font-size: 0.85rem; cursor: pointer; padding: 0.4rem 0.8rem; border-radius: 8px;
+
+.esc-card {
+  max-height: 92vh;
 }
+
+.esc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--sp-3);
+}
+
+.esc-header h3 {
+  font-size: var(--fs-md);
+}
+
+/* Área del Stream de Video */
 .video-wrap {
-  position: relative; width: 100%; aspect-ratio: 4 / 3;
-  background: #000; border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 1rem;
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #000;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin-bottom: var(--sp-3);
+  border: 1px solid var(--border);
 }
-.video { width: 100%; height: 100%; object-fit: cover; }
+
+.video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Retícula o mira láser de escaneo */
 .marco {
-  position: absolute; inset: 18% 12%; border: 3px solid var(--accent);
-  border-radius: 12px; box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.25);
+  position: absolute;
+  inset: 22% 14%;
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 0 100vmax rgba(14, 16, 20, 0.45);
+  pointer-events: none;
 }
+
 .cargando, .hint {
-  position: absolute; bottom: 10px; left: 0; right: 0; text-align: center;
-  color: #fff; font-size: 0.85rem; text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+  position: absolute;
+  bottom: var(--sp-2);
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  padding: 0 var(--sp-2);
 }
+
+.hint {
+  color: var(--text);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9);
+}
+
+/* Toasts Internos Animados */
 .toasts {
-  position: absolute; top: 10px; left: 0; right: 0;
-  display: flex; flex-direction: column; align-items: center; gap: 0.4rem;
+  position: absolute;
+  top: var(--sp-2);
+  left: var(--sp-2);
+  right: var(--sp-2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-1);
+  pointer-events: none;
 }
+
 .toast {
-  font-family: var(--font-display); font-weight: 700; font-size: 0.95rem;
-  padding: 0.5rem 1rem; border-radius: 999px; animation: pop 0.2s ease;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-sm);
+  padding: 0.4rem 1rem;
+  border-radius: var(--radius-pill);
+  animation: pop 0.22s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+  box-shadow: var(--shadow);
 }
+
 .toast.ok { background: var(--accent); color: #11140a; }
 .toast.no { background: var(--warn); color: #2a1d00; }
-@keyframes pop { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-.error-box { padding: 1.5rem; background: var(--bg-elev); border-radius: var(--radius-sm); margin-bottom: 1rem; }
-.err-txt { color: var(--warn); font-size: 0.92rem; line-height: 1.5; }
 
+@keyframes pop {
+  from { transform: scale(0.85); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+/* Caja de Error */
+.error-box {
+  padding: var(--sp-4);
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--sp-3);
+  text-align: center;
+}
+
+.err-txt {
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+
+/* Panel de Cantidades Ajustable */
 .control-panel {
-  background: var(--bg-elev); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); padding: 0.8rem; margin-bottom: 1rem;
-  max-height: 180px; overflow-y: auto;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-2) var(--sp-3);
+  margin-bottom: var(--sp-3);
+  max-height: 160px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
-.cp-label { color: var(--text-dim); font-size: 0.8rem; margin-bottom: 0.5rem; }
-.cp-list { list-style: none; display: flex; flex-direction: column; gap: 0.4rem; }
-.cp-item { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; }
-.cp-nombre { font-size: 0.92rem; font-weight: 500; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cp-ctrl { display: flex; align-items: center; gap: 0.5rem; }
-.cp-btn {
-  width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border);
-  background: var(--bg-card); color: var(--text); font-size: 1.3rem; cursor: pointer;
-  display: grid; place-items: center;
-}
-.cp-btn:active { transform: scale(0.92); }
-.cp-cant { min-width: 26px; text-align: center; font-weight: 700; font-family: var(--font-display); }
 
-.manual { margin-bottom: 1rem; }
-.manual-row { display: flex; gap: 0.6rem; }
-.manual-row input {
-  flex: 1; background: var(--bg-elev); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); padding: 0.7rem; color: var(--text); min-height: 48px;
+.cp-label {
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  margin-bottom: 0.4rem;
 }
-.manual-row input:focus { outline: none; border-color: var(--accent); }
-.terminar { min-height: 54px; font-size: 1.05rem; }
+
+.cp-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.cp-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: 0.2rem 0;
+}
+
+.cp-nombre {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cp-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* Botón Táctil de Sumar/Restar */
+.cp-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  font-size: 1.2rem;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: transform 0.05s ease, background 0.2s;
+}
+
+.cp-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-faint);
+}
+
+.cp-btn:active {
+  transform: scale(0.92);
+}
+
+.cp-cant {
+  min-width: 24px;
+  text-align: center;
+  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: var(--fs-base);
+}
+
+/* Formulario de Emergencia / Manual */
+.manual {
+  margin-bottom: var(--sp-3);
+}
+
+.manual-row {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.manual-row input {
+  flex: 1;
+}
+
+.terminar {
+  min-height: var(--touch);
+}
+
+/* Optimización Responsive: Adaptación Nativa en Celulares */
+@media (max-width: 560px) {
+  .esc-card {
+    padding-bottom: 3.5rem; /* Resguardo táctil inferior para gestos del OS móvil */
+  }
+  
+  .video-wrap {
+    aspect-ratio: 16 / 11; /* Un poco más compacto en pantallas verticales */
+  }
+  
+  .cp-btn {
+    width: 44px; /* Meta táctil optimizada para dedos veloces */
+    height: 44px;
+  }
+}
 </style>

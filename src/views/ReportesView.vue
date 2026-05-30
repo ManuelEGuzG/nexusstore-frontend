@@ -93,7 +93,6 @@ function horaTxt(h: number) {
       <button class="btn btn-ghost mini" @click="exportarCsv">CSV</button>
     </header>
 
-    <!-- Selector de fechas -->
     <div class="filtros card">
       <div class="atajos">
         <button class="chip-btn" @click="rango(7)">7 días</button>
@@ -110,7 +109,6 @@ function horaTxt(h: number) {
     <p v-if="cargando" class="dim">Cargando análisis…</p>
 
     <template v-else>
-      <!-- RESUMEN -->
       <section class="metricas">
         <div class="card met">
           <span class="m-label">Vendido</span>
@@ -138,20 +136,20 @@ function horaTxt(h: number) {
         </div>
       </section>
 
-      <!-- TENDENCIA POR DÍA -->
       <section class="card panel">
         <h2>Ventas por día</h2>
-        <div v-if="serieDia.length" class="chart-dia">
-          <div v-for="d in serieDia" :key="d.dia" class="cd-col">
-            <div class="cd-bar" :style="{ height: (Number(d.total) / maxDia * 100) + '%' }"
-                 :title="fmtFecha(d.dia) + ': ' + fmt(d.total)"></div>
-            <span class="cd-lbl">{{ fmtFecha(d.dia) }}</span>
+        <div v-if="serieDia.length" class="chart-container-dia">
+          <div class="chart-dia">
+            <div v-for="d in serieDia" :key="d.dia" class="cd-col">
+              <div class="cd-bar" :style="{ height: (Number(d.total) / maxDia * 100) + '%' }"
+                   :title="fmtFecha(d.dia) + ': ' + fmt(d.total)"></div>
+              <span class="cd-lbl">{{ fmtFecha(d.dia) }}</span>
+            </div>
           </div>
         </div>
         <p v-else class="dim">Sin ventas en el periodo.</p>
       </section>
 
-      <!-- HORAS PICO -->
       <section class="card panel">
         <h2>Horas pico</h2>
         <div v-if="serieHora.length" class="chart-hora">
@@ -166,20 +164,20 @@ function horaTxt(h: number) {
         <p v-else class="dim">Sin datos.</p>
       </section>
 
-      <!-- PRODUCTOS -->
       <section class="card panel">
         <h2>Productos más vendidos</h2>
         <ol v-if="prod.mas_vendidos.length" class="ranking">
           <li v-for="p in prod.mas_vendidos" :key="p.descripcion" class="rk">
             <span class="rk-desc">{{ p.descripcion }}</span>
-            <span class="rk-cant">{{ Number(p.cantidad).toLocaleString('es-CR') }} u.</span>
-            <span class="rk-monto">{{ fmt(p.monto) }}</span>
+            <div class="rk-meta">
+              <span class="rk-cant">{{ Number(p.amount || p.cantidad).toLocaleString('es-CR') }} u.</span>
+              <span class="rk-monto">{{ fmt(p.monto) }}</span>
+            </div>
           </li>
         </ol>
         <p v-else class="dim">Sin ventas de productos catalogados.</p>
       </section>
 
-      <!-- STOCK CRÍTICO -->
       <section v-if="prod.stock_critico && prod.stock_critico.length" class="card panel alerta">
         <h2>Stock crítico</h2>
         <ul class="lista-simple">
@@ -190,7 +188,6 @@ function horaTxt(h: number) {
         </ul>
       </section>
 
-      <!-- NO ROTAN -->
       <section v-if="prod.no_rotan.length" class="card panel">
         <h2>No se vendieron en el periodo</h2>
         <ul class="lista-simple">
@@ -201,7 +198,6 @@ function horaTxt(h: number) {
         </ul>
       </section>
 
-      <!-- FIADO -->
       <section class="card panel">
         <h2>Fiado en el periodo</h2>
         <div class="fiado-cifras">
@@ -213,79 +209,138 @@ function horaTxt(h: number) {
         </div>
         <h3 class="sub">Deuda más antigua</h3>
         <ul class="lista-simple">
-          <li v-for="a in fiado.antiguedad" :key="a.nombre">
-            <span>{{ a.nombre }}</span>
-            <span class="dim">desde {{ fmtFecha(a.desde) }}</span>
-            <span class="warn">{{ fmt(a.saldo) }}</span>
+          <li v-for="a in fiado.antiguedad" :key="a.nombre" class="antiguedad-row">
+            <div class="antiguedad-info">
+              <span>{{ a.nombre }}</span>
+              <span class="dim text-xs">desde {{ fmtFecha(a.desde) }}</span>
+            </div>
+            <span class="warn font-semibold">{{ fmt(a.saldo) }}</span>
           </li>
         </ul>
       </section>
-
-
     </template>
   </div>
 </template>
 
 <style scoped>
-.wrap { max-width: 760px; margin: 0 auto; padding: 1rem 1.25rem 4rem; }
+/* Contenedor principal */
+.wrap { max-width: 760px; margin: 0 auto; padding: 1rem 1rem 4rem; }
 .top { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.25rem; }
 .top h1 { flex: 1; font-size: 1.5rem; }
 .mini { min-height: 42px; padding: 0.5rem 0.9rem; }
 .dim { color: var(--text-dim); }
+.text-xs { font-size: 0.78rem; }
+.font-semibold { font-weight: 600; }
 .ok { color: var(--ok); }
 .warn { color: var(--warn); }
 
-.filtros { padding: 1rem 1.2rem; margin-bottom: 1.25rem; display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; align-items: center; }
-.atajos { display: flex; gap: 0.5rem; }
-.chip-btn { background: var(--bg-elev); border: 1px solid var(--border); color: var(--text); padding: 0.5rem 0.9rem; border-radius: 999px; cursor: pointer; font-size: 0.85rem; font-family: var(--font-display); }
+/* Filtros y Rangos Adaptables */
+.filtros { padding: 1rem; margin-bottom: 1.25rem; display: flex; flex-direction: column; gap: 1rem; }
+.atajos { display: flex; gap: 0.4rem; width: 100%; justify-content: space-between; }
+.chip-btn { flex: 1; text-align: center; background: var(--bg-elev); border: 1px solid var(--border); color: var(--text); padding: 0.5rem 0.4rem; border-radius: 999px; cursor: pointer; font-size: 0.8rem; font-family: var(--font-display); white-space: nowrap; }
 .chip-btn:hover { border-color: var(--accent); }
-.fechas { display: flex; align-items: center; gap: 0.5rem; }
-.fechas input { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; color: var(--text); }
+.fechas { display: flex; align-items: center; gap: 0.5rem; width: 100%; }
+.fechas input { flex: 1; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px; padding: 0.55rem; color: var(--text); min-width: 0; font-size: 0.9rem; }
 
-.metricas { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.9rem; margin-bottom: 1.25rem; }
-.met { padding: 1.1rem; display: flex; flex-direction: column; gap: 0.25rem; }
-.m-label { color: var(--text-dim); font-size: 0.82rem; }
-.m-val { font-family: var(--font-display); font-size: 1.5rem; font-weight: 800; }
+/* Métricas en cuadrícula fluida */
+.metricas { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; margin-bottom: 1.25rem; }
+.met { padding: 0.9rem; display: flex; flex-direction: column; gap: 0.2rem; }
+.m-label { color: var(--text-dim); font-size: 0.8rem; }
+.m-val { font-family: var(--font-display); font-size: 1.25rem; font-weight: 800; word-break: break-all; }
 .m-val.ok { color: var(--ok); } .m-val.warn { color: var(--warn); }
-.m-delta { font-size: 0.82rem; font-weight: 600; }
+.m-delta { font-size: 0.78rem; font-weight: 600; display: inline-flex; flex-wrap: wrap; gap: 0.2rem; }
 .m-delta.up { color: var(--ok); } .m-delta.down { color: var(--danger); }
-.m-delta-sub { color: var(--text-dim); font-size: 0.78rem; font-weight: 400; }
+.m-delta-sub { color: var(--text-dim); font-size: 0.75rem; font-weight: 400; }
 
-.panel { padding: 1.4rem; margin-bottom: 1.25rem; }
-.panel h2 { font-size: 1.1rem; margin-bottom: 1rem; }
+/* Paneles informativos */
+.panel { padding: 1.1rem; margin-bottom: 1.25rem; }
+.panel h2 { font-size: 1.05rem; margin-bottom: 1rem; }
 .panel.alerta { border-color: var(--warn); }
-.sub { font-size: 0.95rem; color: var(--text-dim); margin: 1.2rem 0 0.6rem; }
+.sub { font-size: 0.9rem; color: var(--text-dim); margin: 1.2rem 0 0.6rem; }
 
-.chart-dia { display: flex; align-items: flex-end; gap: 0.3rem; height: 140px; }
-.cd-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0.3rem; height: 100%; justify-content: flex-end; }
-.cd-bar { width: 100%; max-width: 28px; background: linear-gradient(to top, var(--accent), var(--accent-press)); border-radius: 4px 4px 0 0; min-height: 3px; }
-.cd-lbl { font-size: 0.65rem; color: var(--text-dim); transform: rotate(-45deg); white-space: nowrap; }
+/* Gráfico de Ventas por Día con scroll seguro en pantallas ultra angostas */
+.chart-container-dia { width: 100%; overflow-x: auto; padding-bottom: 1rem; min-height: 0; }
+.chart-dia { display: flex; align-items: flex-end; gap: 0.4rem; height: 140px; min-width: 450px; padding-top: 0.5rem; }
+.cd-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0.5rem; height: 100%; justify-content: flex-end; position: relative; }
+.cd-bar { width: 100%; max-width: 24px; background: linear-gradient(to top, var(--accent), var(--accent-press)); border-radius: 4px 4px 0 0; min-height: 3px; }
+.cd-lbl { font-size: 0.7rem; color: var(--text-dim); transform: rotate(-30deg); transform-origin: left center; white-space: nowrap; margin-top: 0.2rem; display: inline-block; }
 
-.chart-hora { display: flex; flex-direction: column; gap: 0.4rem; }
-.ch-row { display: grid; grid-template-columns: 48px 1fr auto; gap: 0.6rem; align-items: center; }
-.ch-hora { font-size: 0.8rem; color: var(--text-dim); }
-.ch-track { background: var(--bg-elev); border-radius: 999px; height: 18px; overflow: hidden; }
+/* Gráfico de Horas Pico adaptado */
+.chart-hora { display: flex; flex-direction: column; gap: 0.5rem; }
+.ch-row { display: grid; grid-template-columns: 45px 1fr 75px; gap: 0.5rem; align-items: center; }
+.ch-hora { font-size: 0.78rem; color: var(--text-dim); }
+.ch-track { background: var(--bg-elev); border-radius: 999px; height: 16px; overflow: hidden; width: 100%; }
 .ch-fill { height: 100%; background: var(--accent-2); border-radius: 999px; }
-.ch-val { font-size: 0.8rem; min-width: 70px; text-align: right; }
+.ch-val { font-size: 0.78rem; text-align: right; font-weight: 600; white-space: nowrap; }
 
+/* Listados y Ranking Fluido */
 .ranking { list-style: none; counter-reset: r; }
-.rk { display: grid; grid-template-columns: 1fr auto auto; gap: 0.8rem; padding: 0.6rem 0; border-bottom: 1px solid var(--border); align-items: center; }
-.rk::before { counter-increment: r; content: counter(r); color: var(--accent); font-family: var(--font-display); font-weight: 700; margin-right: 0.4rem; }
-.rk-cant { color: var(--text-dim); font-size: 0.85rem; }
-.rk-monto { font-weight: 600; }
+.rk { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.65rem 0; border-bottom: 1px solid var(--border); }
+.rk::before { counter-increment: r; content: counter(r); color: var(--accent); font-family: var(--font-display); font-weight: 700; min-width: 15px; }
+.rk-desc { font-size: 0.88rem; font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.rk-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 0.1rem; flex-shrink: 0; }
+.rk-cant { color: var(--text-dim); font-size: 0.78rem; }
+.rk-monto { font-size: 0.88rem; font-weight: 600; }
 
 .lista-simple { list-style: none; }
-.lista-simple li { display: flex; justify-content: space-between; gap: 0.8rem; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
+.lista-simple li { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.6rem 0; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
 .stock-num { color: var(--warn); font-weight: 700; }
 
-.fiado-cifras { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem; margin-bottom: 0.5rem; }
-.fc { background: var(--bg-elev); border-radius: var(--radius-sm); padding: 0.8rem; display: flex; flex-direction: column; gap: 0.2rem; }
-.fc-lbl { color: var(--text-dim); font-size: 0.78rem; }
-.fc-val { font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; }
+.antiguedad-row { display: flex; justify-content: space-between; align-items: center; }
+.antiguedad-info { display: flex; flex-direction: column; gap: 0.1rem; }
 
-.caja-resumen { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 0.8rem; margin-bottom: 1rem; }
-.cr { display: flex; flex-direction: column; gap: 0.2rem; }
-.cr .dim { font-size: 0.78rem; }
+/* Cifras de Fiado Flexibles */
+.fiado-cifras { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-bottom: 0.5rem; }
+.fc { background: var(--bg-elev); border-radius: var(--radius-sm); padding: 0.65rem; display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.fc-lbl { color: var(--text-dim); font-size: 0.75rem; }
+.fc-val { font-family: var(--font-display); font-weight: 700; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Secciones heredadas extras */
+.caja-resumen { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 0.5rem; margin-bottom: 1rem; }
+.cr { display: flex; flex-direction: column; gap: 0.15rem; }
+.cr .dim { font-size: 0.75rem; }
 .cierres { list-style: none; }
-.cierre-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.6rem; padding: 0.5rem 0; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+.cierre-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.5rem; padding: 0.6rem 0; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
+
+/* ====================== TABLETS Y MONITOR (ESCRITORIO) ====================== */
+@media (min-width: 580px) {
+  .wrap { padding: 1.5rem 1.25rem 4rem; }
+  .filtros { flex-direction: row; padding: 1rem 1.2rem; }
+  .atajos { width: auto; justify-content: flex-start; }
+  .chip-btn { flex: initial; padding: 0.5rem 0.9rem; font-size: 0.85rem; }
+  .fechas { width: auto; }
+  .fechas input { flex: initial; padding: 0.5rem; font-size: 0.95rem; }
+  
+  .metricas { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.9rem; }
+  .met { padding: 1.1rem; }
+  .m-val { font-size: 1.5rem; }
+  .m-delta { font-size: 0.82rem; }
+  .m-delta-sub { font-size: 0.78rem; }
+  
+  .panel { padding: 1.4rem; }
+  .panel h2 { font-size: 1.1rem; }
+  .sub { font-size: 0.95rem; }
+  
+  .chart-container-dia { overflow: hidden; }
+  .chart-dia { min-width: initial; gap: 0.3rem; }
+  .cd-bar { max-width: 28px; }
+  .cd-lbl { font-size: 0.65rem; transform: rotate(-45deg); }
+  
+  .ch-row { grid-template-columns: 48px 1fr auto; gap: 0.6rem; }
+  .ch-hora { font-size: 0.8rem; }
+  .ch-track { height: 18px; }
+  .ch-val { font-size: 0.8rem; min-width: 70px; }
+  
+  .rk { grid-template-columns: 1fr auto auto; gap: 0.8rem; display: grid; }
+  .rk-meta { display: contents; }
+  .rk-desc { font-size: 0.95rem; }
+  .rk-cant { font-size: 0.85rem; }
+  .rk-monto { font-size: 0.95rem; }
+  
+  .lista-simple li { font-size: 0.95rem; }
+  .fc { padding: 0.8rem; gap: 0.2rem; }
+  .fc-lbl { font-size: 0.78rem; }
+  .fc-val { font-size: 1.05rem; }
+  .cierre-row { font-size: 0.9rem; gap: 0.6rem; }
+}
 </style>
