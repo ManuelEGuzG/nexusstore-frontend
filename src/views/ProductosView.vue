@@ -301,6 +301,7 @@ async function onCodigoLeido(codigo: string) {
     <Teleport to="body">
       <EscanerCodigo
         v-if="mostrarEscaner"
+        class="escaner-supremo"
         @leido="onCodigoLeido"
         @cerrar="mostrarEscaner = false"
       />
@@ -493,14 +494,14 @@ async function onCodigoLeido(codigo: string) {
 /* Forzado de Viewport Absoluto para la capa Modal */
 .modal-bg { 
   position: fixed; 
-  inset: 0 !important; /* Fuerza cobertura total en pantallas con scroll */
+  inset: 0 !important; 
   width: 100vw; 
   height: 100vh; 
   background: rgba(6, 8, 13, 0.85); 
   display: grid; 
   place-items: center; 
   padding: 1rem; 
-  z-index: 99999 !important; /* Prioridad absoluta sobre el layout */
+  z-index: 99999 !important; /* Prioridad absoluta base del modal */
   backdrop-filter: blur(4px); 
   outline: none; 
 }
@@ -508,6 +509,13 @@ async function onCodigoLeido(codigo: string) {
 .modal h3 { margin: 0 0 1.4rem 0; font-size: 1.25rem; color: #ffffff; font-weight: 700; letter-spacing: -0.01em; }
 .modal-acciones { display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem; }
 .modal-acciones .btn { height: 42px; font-weight: 600; padding: 0 1.25rem; border-radius: 6px; }
+
+/* Clase agregada para forzar el escáner sobre cualquier modal del DOM */
+.escaner-supremo {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 1000000 !important; /* Estrictamente mayor que el z-index del modal */
+}
 
 /* Animaciones */
 .page.fade-up {
