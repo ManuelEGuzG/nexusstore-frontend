@@ -236,11 +236,10 @@ function horaTxt(h: number) {
 </template>
 
 <style scoped>
-.wrap { 
-  max-width: 840px; 
-  margin: 0 auto; 
-  padding: clamp(1rem, 3vw, 2rem) 1rem 4rem; 
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+.wrap {
+  max-width: 840px;
+  margin: 0 auto;
+  padding: clamp(1rem, 3vw, 2rem) 1rem 4rem;
 }
 
 .top { 
@@ -496,6 +495,23 @@ function horaTxt(h: number) {
 }
 @keyframes slideUp {
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* ====================== MÓVILES PEQUEÑOS ====================== */
+@media (max-width: 480px) {
+  .top { flex-wrap: wrap; }
+  .top h1 { order: -1; width: 100%; }
+
+  .filtros { padding: 0.9rem 1rem; }
+  .atajos { flex-wrap: wrap; }
+  .chip-btn { flex: unset; flex-grow: 1; min-width: 120px; }
+  .fechas { flex-wrap: wrap; }
+  .fechas input { min-width: 130px; }
+  .flecha-intermedio { display: none; }
+
+  .metricas { grid-template-columns: 1fr; }
+
+  .fiado-cifras { grid-template-columns: 1fr; }
 }
 
 /* ====================== TABLETS Y MONITOR (ESCRITORIO) ====================== */

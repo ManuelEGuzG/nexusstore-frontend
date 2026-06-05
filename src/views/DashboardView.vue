@@ -104,7 +104,6 @@ function salir() {
   padding: clamp(1rem, 3vw, 2rem);
   max-width: 1200px;
   margin: 0 auto;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 .dash-top { 
@@ -156,16 +155,16 @@ function salir() {
   gap: 1rem; 
   margin-bottom: var(--sp-5, 2rem); 
 }
-.metric { 
-  background: var(--bg-card, #111422); 
-  border: 1px solid var(--border, rgba(255,255,255,0.06)); 
-  border-radius: var(--radius, 8px); 
-  padding: 1.4rem; 
-  display: flex; 
-  flex-direction: column; 
-  gap: 0.3rem; 
-  box-shadow: var(--shadow, 0 4px 12px rgba(0,0,0,0.1)); 
-  transition: transform 0.2s ease, box-shadow 0.2s ease; 
+.metric {
+  background: var(--bg-card, #1d212a);
+  border: 1px solid var(--border, #2b313d);
+  border-radius: var(--radius, 18px);
+  padding: 1.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  box-shadow: var(--shadow, 0 12px 40px rgba(0,0,0,0.45));
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 .metric:hover { 
   transform: translateY(-2px); 
@@ -210,17 +209,17 @@ function salir() {
   gap: 1rem; 
 }
 .tile {
-  text-align: left; 
-  padding: 1.3rem; 
-  cursor: pointer; 
-  display: flex; 
-  flex-direction: column; 
+  text-align: left;
+  padding: 1.3rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
   gap: 1rem;
-  background: var(--bg-card, #111422); 
-  border: 1px solid var(--border, rgba(255,255,255,0.06)); 
-  border-radius: var(--radius, 8px);
+  background: var(--bg-card, #1d212a);
+  border: 1px solid var(--border, #2b313d);
+  border-radius: var(--radius, 18px);
   transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
-  min-height: 140px; 
+  min-height: 140px;
   justify-content: space-between;
 }
 .tile:hover { 

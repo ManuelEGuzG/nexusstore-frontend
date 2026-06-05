@@ -260,7 +260,6 @@ async function desactivar2fa() {
   padding: clamp(1rem, 3vw, 2rem);
   max-width: 680px;
   margin: 0 auto;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 .top {
@@ -369,6 +368,19 @@ async function desactivar2fa() {
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 @keyframes slideUp { to { opacity: 1; transform: translateY(0); } }
+
+@media (max-width: 500px) {
+  .panel-head { flex-wrap: wrap; }
+
+  .user-item { flex-direction: column; align-items: flex-start; gap: 0.6rem; }
+  .u-acciones { width: 100%; justify-content: flex-end; }
+
+  .estado-2fa { flex-direction: column; align-items: flex-start; }
+  .estado-2fa .btn { width: 100%; min-height: 44px; }
+
+  .modal-acciones { flex-direction: column-reverse; }
+  .modal-acciones .btn { width: 100%; min-height: 44px; }
+}
 
 .modal::-webkit-scrollbar { width: 4px; }
 .modal::-webkit-scrollbar-track { background: transparent; }

@@ -180,7 +180,6 @@ function pagosTxt(v: Venta) {
   padding: clamp(1rem, 3vw, 2rem);
   max-width: 750px;
   margin: 0 auto;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 .top {
@@ -220,7 +219,7 @@ function pagosTxt(v: Venta) {
 
 /* Lista de Ventas Estilo Ledger */
 .lista { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
-.card { background: var(--bg-card, #111422); border: 1px solid var(--border, rgba(255,255,255,0.06)); border-radius: 8px; }
+.card { background: var(--bg-card, #111422); border: 1px solid var(--border, rgba(255,255,255,0.06)); border-radius: var(--radius-sm, 12px); }
 
 .venta {
   display: flex;
@@ -353,6 +352,17 @@ function pagosTxt(v: Venta) {
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 @keyframes slideUp { to { opacity: 1; transform: translateY(0); } }
+
+@media (max-width: 500px) {
+  .venta { flex-wrap: wrap; gap: 0.4rem; }
+  .v-info { width: 100%; }
+  .v-derecha { width: 100%; justify-content: space-between; }
+
+  .det-items li { flex-direction: column; align-items: flex-start; gap: 0.2rem; }
+  .item-desc { max-width: 100%; }
+
+  .btn-ghost.btn-block { margin-top: 0.75rem; }
+}
 
 /* Gestión de scroll interno del modal */
 .det-items::-webkit-scrollbar { width: 4px; }

@@ -292,15 +292,13 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 /* ==========================================================================
    SISTEMA DE DISEÑO INTERNAZIONAL / ENTERPRISE DARK
    ========================================================================== */
-.pos { 
-  height: 100vh; 
-  height: 100dvh; 
-  display: flex; 
-  flex-direction: column; 
+.pos {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
-  background-color: var(--bg-main, #0c0e17);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
+  background-color: var(--bg, #0e1014);
 }
 
 /* Header Principal */

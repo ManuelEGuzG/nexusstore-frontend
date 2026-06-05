@@ -78,24 +78,23 @@ async function entrar() {
 </template>
 
 <style scoped>
-.auth-wrap { 
-  min-height: 100vh; 
-  min-height: 100dvh; 
-  display: grid; 
-  place-items: center; 
-  padding: 1.5rem; 
-  background: var(--bg-main, #0c0e17);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+.auth-wrap {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: var(--bg, #0e1014);
 }
 
-.auth-card { 
-  width: 100%; 
-  max-width: 420px; 
-  background: var(--bg-card, #111422); 
-  border: 1px solid var(--border, rgba(255,255,255,0.06)); 
-  border-radius: var(--radius, 8px); 
-  box-shadow: var(--shadow, 0 4px 12px rgba(0,0,0,0.1)); 
-  padding: clamp(1.8rem, 1.4rem + 2vw, 2.6rem); 
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--bg-card, #1d212a);
+  border: 1px solid var(--border, #2b313d);
+  border-radius: var(--radius, 18px);
+  box-shadow: var(--shadow, 0 12px 40px rgba(0,0,0,0.45));
+  padding: clamp(1.8rem, 1.4rem + 2vw, 2.6rem);
 }
 
 .brand { 
@@ -145,8 +144,8 @@ async function entrar() {
 }
 .field input {
   background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--border, rgba(255,255,255,0.06));
-  border-radius: 6px;
+  border: 1px solid var(--border, #2b313d);
+  border-radius: var(--radius-sm, 12px);
   padding: 0.75rem 1rem;
   color: #ffffff;
   font-size: 0.95rem;
@@ -171,17 +170,19 @@ async function entrar() {
 }
 
 /* Botones de Acción */
-.entrar-btn { 
+.entrar-btn {
   width: 100%;
   padding: 0.8rem;
-  background: var(--accent, #a3e635);
+  background: var(--accent, #b8ff3c);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm, 12px);
   color: #0c0e17;
-  font-weight: 600;
+  font-weight: 700;
+  font-family: var(--font-display, 'Sora', sans-serif);
   font-size: var(--fs-md, 0.95rem);
   cursor: pointer;
   transition: background 0.2s, transform 0.1s;
+  box-shadow: var(--shadow-accent, 0 8px 30px rgba(184, 255, 60, 0.2));
 }
 .entrar-btn:hover:not(:disabled) {
   background: #bef264;

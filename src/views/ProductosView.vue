@@ -313,7 +313,6 @@ async function onCodigoLeido(codigo: string) {
   padding: clamp(1rem, 3vw, 2rem);
   max-width: 900px;
   margin: 0 auto;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 .page-head {
@@ -520,6 +519,19 @@ async function onCodigoLeido(codigo: string) {
 
 @keyframes slideUp { to { opacity: 1; transform: translateY(0); } }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+@media (max-width: 480px) {
+  .page-head { flex-wrap: wrap; }
+  .page-head h1 { order: -1; width: 100%; }
+  .head-acciones { flex-wrap: wrap; width: 100%; }
+  .head-acciones .mini-btn { flex: 1; justify-content: center; }
+
+  .form-row { grid-template-columns: 1fr; }
+  .barcode-row { flex-direction: column; }
+  .mini-scan { width: 100%; height: 44px; justify-content: center; }
+
+  .p-meta { gap: 0.4rem; }
+}
 
 @media (min-width: 560px) {
   .p-nombre { font-size: 1.05rem; }

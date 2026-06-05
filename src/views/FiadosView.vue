@@ -207,7 +207,6 @@ function inicial(nombre: string) {
   padding: clamp(1rem, 3vw, 2rem);
   max-width: 750px;
   margin: 0 auto;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 .page-head {
@@ -273,7 +272,7 @@ function inicial(nombre: string) {
 
 /* Listado Operativo de Clientes */
 .lista { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
-.card { background: var(--bg-card, #111422); border: 1px solid var(--border, rgba(255,255,255,0.06)); border-radius: 8px; }
+.card { background: var(--bg-card, #111422); border: 1px solid var(--border, rgba(255,255,255,0.06)); border-radius: var(--radius-sm, 12px); }
 
 .cliente {
   display: flex;
@@ -373,6 +372,26 @@ function inicial(nombre: string) {
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 @keyframes slideUp { to { opacity: 1; transform: translateY(0); } }
+
+@media (max-width: 500px) {
+  .page-head { flex-wrap: wrap; }
+  .page-head h1 { order: -1; width: 100%; }
+
+  .det-head { flex-direction: column; align-items: flex-start; }
+  .saldo-grande { font-size: 1.3rem; }
+
+  .abono-row { flex-direction: column; }
+  .abono-row .btn { width: 100%; min-height: 44px; }
+
+  .hist-item {
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto auto;
+    gap: 0.35rem 0.6rem;
+  }
+  .h-fecha { grid-column: 1 / -1; padding-top: 0.1rem; }
+
+  .modal { padding: 1.25rem 1rem 2rem; }
+}
 
 /* Scrollbar Customization for Historial */
 .hist-wrapper::-webkit-scrollbar { width: 4px; }
