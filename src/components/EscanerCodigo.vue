@@ -8,170 +8,208 @@ const emit = defineEmits<{
 }>()
 
 const videoRef = ref<HTMLVideoElement | null>(null)
-const errorInstancia = ref('')
-const cargandoHardware = ref(true)
-const codigoManual = ref('')
+const error = ref('')
+const cargando = ref(true)
 
-let lectorZXing: BrowserMultiFormatReader | null = null
-let controladoresStream: IScannerControls | null = null
+// Debounce: igual que EscanerContinuo para evitar lecturas repetidas del mismo frame
+const DEBOUNCE = 1200
+let ultimoCodigo = ''
+let ultimoMomento = 0
+let yaEmitido = false
 
-/**
- * Libera de forma segura los recursos del hardware de captura y detiene los hilos de video.
- */
-function detenerCaptura() {
-  if (controladoresStream) {
-    try {
-      controladoresStream.stop()
-    } catch (e) {
-      console.warn('Aviso preventivo en cierre de canal óptico:', e)
-    }
-    controladoresStream = null
-  }
-}
+let reader: BrowserMultiFormatReader | null = null
+let controls: IScannerControls | null = null
+let audioCtx: AudioContext | null = null
 
 onMounted(async () => {
-  // La API de MediaDevices requiere contextos seguros (HTTPS o localhost).
   try {
-    lectorZXing = new BrowserMultiFormatReader()
-
-    // Configuración por defecto: Prioriza periféricos de captura traseros en terminales móviles.
-    controladoresStream = await lectorZXing.decodeFromVideoDevice(
+    reader = new BrowserMultiFormatReader()
+    controls = await reader.decodeFromVideoDevice(
       undefined,
       videoRef.value!,
-      (resultado, excepcionFrame) => {
-        if (resultado) {
-          const identificadorLeido = resultado.getText()
-          detenerCaptura()
-          emit('leido', identificadorLeido)
-        }
-      }
+      (result) => {
+        if (!result || yaEmitido) return
+        const codigo = result.getText()
+        const ahora = Date.now()
+
+        if (codigo === ultimoCodigo && ahora - ultimoMomento < DEBOUNCE) return
+        ultimoCodigo = codigo
+        ultimoMomento = ahora
+
+        // Marca como emitido para que no dispare de nuevo mientras el modal aún está montado
+        yaEmitido = true
+        avisar(codigo, true)
+        beep(true)
+
+        // Pequeña pausa para que el toast sea visible antes de cerrar
+        setTimeout(() => {
+          detener()
+          emit('leido', codigo)
+        }, 400)
+      },
     )
-    cargandoHardware.value = false
-  } catch (errorDispositivo: any) {
-    cargandoHardware.value = false
-    
-    if (errorDispositivo?.name === 'NotAllowedError') {
-      errorInstancia.value = 'Permiso denegado: El navegador restringe el acceso al hardware óptico.'
-    } else if (errorDispositivo?.name === 'NotFoundError') {
-      errorInstancia.value = 'Fallo de hardware: No se detectó ningún periférico de captura de video.'
-    } else if (window.location.protocol === 'http:' && !window.location.hostname.includes('localhost')) {
-      errorInstancia.value = 'Seguridad de red: La captura requiere transmisión cifrada HTTPS. Registre el identificador de forma manual.'
+    cargando.value = false
+  } catch (e: any) {
+    cargando.value = false
+    if (e?.name === 'NotAllowedError') {
+      error.value = 'Permiso de cámara denegado. Actívalo en las preferencias del navegador.'
+    } else if (e?.name === 'NotFoundError') {
+      error.value = 'No se detectó ninguna cámara en este dispositivo.'
+    } else if (location.protocol === 'http:' && !location.hostname.includes('localhost')) {
+      error.value = 'El escáner requiere conexión HTTPS. Ingresá el código manualmente.'
     } else {
-      errorInstancia.value = `Fallo del subsistema óptico: ${errorDispositivo?.message || 'Excepción desconocida.'}`
+      error.value = 'Error al iniciar la cámara: ' + (e?.message || 'Error desconocido.')
     }
   }
 })
 
-onBeforeUnmount(detenerCaptura)
-
-/**
- * Procesa e inyecta la entrada alfanumérica manual como respaldo contable.
- */
-function despacharEntradaManual() {
-  const tokenLimpio = codigoManual.value.trim()
-  if (tokenLimpio) {
-    detenerCaptura()
-    emit('leido', tokenLimpio)
-  }
+function detener() {
+  try { controls?.stop() } catch { /* ignore */ }
+  controls = null
 }
 
-function abortarOperacion() {
-  detenerCaptura()
+onBeforeUnmount(detener)
+
+function beep(exito: boolean) {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || (window as any).webkitAudioContext)()
+    const osc = audioCtx.createOscillator()
+    const gain = audioCtx.createGain()
+    osc.connect(gain)
+    gain.connect(audioCtx.destination)
+    osc.frequency.value = exito ? 880 : 300
+    gain.gain.value = 0.06
+    osc.start()
+    osc.stop(audioCtx.currentTime + (exito ? 0.08 : 0.18))
+  } catch { /* falla silenciosa */ }
+}
+
+interface Toast { id: number; texto: string; ok: boolean }
+const toasts = ref<Toast[]>([])
+let toastId = 0
+
+function avisar(texto: string, ok = true) {
+  const id = ++toastId
+  toasts.value.push({ id, texto, ok })
+  setTimeout(() => {
+    toasts.value = toasts.value.filter((t) => t.id !== id)
+  }, 1600)
+}
+
+const manual = ref('')
+function enviarManual() {
+  const cod = manual.value.trim()
+  if (!cod || yaEmitido) return
+  yaEmitido = true
+  detener()
+  emit('leido', cod)
+}
+
+function cerrar() {
+  detener()
   emit('cerrar')
 }
 </script>
 
 <template>
-  <div class="esc-bg" @click.self="abortarOperacion" @keydown.escape="abortarOperacion" tabindex="-1">
+  <div class="esc-bg" @click.self="cerrar" @keydown.escape="cerrar" tabindex="-1">
     <div class="esc-card card fade-up" role="dialog" aria-modal="true" aria-labelledby="scanner-title">
-      
+
       <div class="esc-header">
-        <h3 id="scanner-title">Lector de Código de Barras</h3>
-        <button type="button" class="btn-cerrar-top" @click="abortarOperacion" aria-label="Cerrar terminal óptico">×</button>
+        <h3 id="scanner-title">Escanear Código de Barras</h3>
+        <button type="button" class="btn-cerrar-top" @click="cerrar" aria-label="Cerrar escáner">×</button>
       </div>
 
-      <div v-if="!errorInstancia" class="video-wrap">
+      <div v-if="!error" class="video-wrap">
         <video ref="videoRef" class="video" autoplay muted playsinline></video>
-        
-        <div class="marco" :class="{ 'scanning': !cargandoHardware }">
-          <div class="linea-laser" v-if="!cargandoHardware"></div>
+
+        <div class="marco" :class="{ scanning: !cargando }">
+          <div v-if="!cargando" class="linea-laser"></div>
         </div>
-        
-        <p v-if="cargandoHardware" class="status-text text-pulse">Inicializando periférico de video…</p>
-        <p v-else class="status-text hint">Alinee el código de barras en el recuadro central</p>
+
+        <p v-if="cargando" class="status-text text-pulse">Iniciando cámara…</p>
+        <p v-else class="status-text hint">Alineá el código en el recuadro</p>
+
+        <div class="toasts" aria-live="polite">
+          <div v-for="t in toasts" :key="t.id" class="toast" :class="t.ok ? 'ok' : 'no'">
+            {{ t.texto }}
+          </div>
+        </div>
       </div>
 
       <div v-else class="error-box" role="alert">
-        <p class="err-txt">{{ errorInstancia }}</p>
+        <p class="err-txt">{{ error }}</p>
       </div>
 
       <div class="manual">
         <div class="manual-row">
           <input
-            id="manual-input"
-            v-model="codigoManual"
+            v-model="manual"
             type="text"
             inputmode="numeric"
             class="inp"
-            placeholder="O digite el código de barras…"
-            autoComplete="off"
-            @keyup.enter="despacharEntradaManual"
+            placeholder="O digitá el código manualmente…"
+            autocomplete="off"
+            @keyup.enter="enviarManual"
           />
-          <button type="button" class="btn btn-primary" :disabled="!codigoManual.trim()" @click="despacharEntradaManual">
-            Agregar
+          <button type="button" class="btn btn-primary" :disabled="!manual.trim()" @click="enviarManual">
+            Confirmar
           </button>
         </div>
       </div>
+
+      <button type="button" class="btn btn-ghost btn-block" @click="cerrar">
+        Cancelar
+      </button>
 
     </div>
   </div>
 </template>
 
 <style scoped>
-/* Fondo e Inyección de Centrado Absoluto Exacto */
 .esc-bg {
-  position: fixed; 
-  inset: 0; 
+  position: fixed;
+  inset: 0;
   background: rgba(6, 8, 13, 0.88);
-  display: flex; 
+  display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1rem; 
+  padding: 1rem;
   z-index: 150;
   backdrop-filter: blur(5px);
   outline: none;
 }
 
-/* Tarjeta Modal: Consistencia Estricta de Proporciones */
 .esc-card {
-  padding: 1.6rem; 
-  width: 100%; 
+  padding: 1.6rem;
+  width: 100%;
   max-width: 440px;
   min-width: 320px;
   max-height: 94vh;
+  overflow-y: auto;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  gap: 0;
 }
 
-/* Reset protector contra herencias globales de Grid o Flex */
-.card { 
-  background: var(--bg-card, #111422); 
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.06)); 
-  border-radius: 8px; 
-  display: block !important; 
+.card {
+  background: var(--bg-card, #1d212a);
+  border: 1px solid var(--border, #2b313d);
+  border-radius: var(--radius-sm, 12px);
+  display: flex !important;
 }
 
 .esc-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--sp-3, 1rem);
+  margin-bottom: 1rem;
 }
 
 .esc-header h3 {
-  font-size: var(--fs-md, 1.15rem);
+  font-size: 1.1rem;
   font-weight: 700;
   color: #ffffff;
   margin: 0;
@@ -186,23 +224,20 @@ function abortarOperacion() {
   cursor: pointer;
   line-height: 1;
   padding: 0;
-  transition: color 0.15s ease;
+  transition: color 0.15s;
 }
+.btn-cerrar-top:hover { color: #ffffff; }
 
-.btn-cerrar-top:hover {
-  color: #ffffff;
-}
-
-/* Área de Renderizado de Video: Forzado Estricto 4:3 */
+/* Área de video */
 .video-wrap {
   position: relative;
   width: 100%;
-  aspect-ratio: 4 / 3 !important;
+  aspect-ratio: 4 / 3;
   background: #06080d;
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--radius-sm, 12px);
   overflow: hidden;
-  margin-bottom: var(--sp-3, 1rem);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.06));
+  margin-bottom: 1rem;
+  border: 1px solid var(--border, #2b313d);
 }
 
 .video {
@@ -211,143 +246,160 @@ function abortarOperacion() {
   object-fit: cover;
 }
 
-/* Retícula de Enfoque Rectangular Proporcional */
+/* Marco de enfoque */
 .marco {
   position: absolute;
   inset: 20% 12%;
   border: 2px solid rgba(255, 255, 255, 0.15);
-  border-radius: var(--radius-sm, 6px);
+  border-radius: 8px;
   box-shadow: 0 0 0 100vmax rgba(6, 8, 13, 0.65);
   pointer-events: none;
   transition: border-color 0.3s ease;
 }
+.marco.scanning { border-color: var(--accent, #b8ff3c); }
 
-.marco.scanning {
-  border-color: var(--accent, #a3e635);
-}
-
-/* Línea Láser Dinámica */
+/* Línea láser */
 .linea-laser {
   position: absolute;
   left: 0;
   right: 0;
   height: 2px;
-  background: var(--accent, #a3e635);
-  box-shadow: 0 0 8px var(--accent, #a3e635);
+  background: var(--accent, #b8ff3c);
+  box-shadow: 0 0 8px var(--accent, #b8ff3c);
   animation: laserSweep 2.2s linear infinite;
 }
-
 @keyframes laserSweep {
-  0% { top: 0%; }
-  50% { top: 100%; }
+  0%   { top: 0%; }
+  50%  { top: 100%; }
   100% { top: 0%; }
 }
 
 .status-text {
   position: absolute;
-  bottom: var(--sp-2, 0.75rem);
+  bottom: 0.75rem;
   left: 1rem;
   right: 1rem;
   text-align: center;
-  font-size: var(--fs-xs, 0.8rem);
+  font-size: 0.8rem;
   font-weight: 500;
   margin: 0;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9);
 }
+.hint { color: #cbd5e1; }
+.text-pulse { animation: pulseOpacity 1.5s ease-in-out infinite; color: #64748b; }
+@keyframes pulseOpacity { 50% { opacity: 0.5; } }
 
-.hint {
-  color: #cbd5e1;
+/* Toasts HUD */
+.toasts {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  right: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  pointer-events: none;
+}
+.toast {
+  font-weight: 700;
+  font-size: 0.88rem;
+  padding: 0.45rem 1.1rem;
+  border-radius: 50px;
+  animation: pop 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+  max-width: 90%;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.toast.ok { background: var(--accent, #b8ff3c); color: #11140a; }
+.toast.no { background: #f87171; color: #ffffff; }
+@keyframes pop {
+  from { transform: scale(0.85); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
 }
 
-.text-pulse {
-  animation: pulseOpacity 1.5s ease-in-out infinite;
-  color: #64748b;
-}
-
-@keyframes pulseOpacity {
-  50% { opacity: 0.5; }
-}
-
-/* Bloque de Excepciones de Hardware */
+/* Error */
 .error-box {
-  padding: var(--sp-4, 1.5rem);
+  padding: 1.5rem;
   background: rgba(239, 68, 68, 0.06);
   border: 1px dashed rgba(239, 68, 68, 0.18);
-  border-radius: var(--radius-sm, 6px);
-  margin-bottom: var(--sp-3, 1rem);
+  border-radius: var(--radius-sm, 12px);
+  margin-bottom: 1rem;
   text-align: center;
 }
-
 .err-txt {
   color: #f87171;
-  font-size: var(--fs-sm, 0.88rem);
+  font-size: 0.88rem;
   line-height: 1.5;
   margin: 0;
   font-weight: 500;
 }
 
-/* Entrada Manual Simétrica */
-.manual {
-  margin-bottom: 0.5rem;
-}
-
-.manual-row {
-  display: flex;
-  gap: var(--sp-2, 0.75rem);
-}
-
+/* Entrada manual */
+.manual { margin-bottom: 0.75rem; }
+.manual-row { display: flex; gap: 0.6rem; }
 .manual-row .inp {
   flex: 1;
-  background: rgba(0, 0, 0, 0.15); 
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.06));
-  border-radius: 6px; 
-  padding: 0.7rem 0.9rem; 
-  color: #ffffff; 
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border, #2b313d);
+  border-radius: var(--radius-sm, 12px);
+  padding: 0.7rem 0.9rem;
+  color: #ffffff;
   min-height: 44px;
   font-size: 0.92rem;
-  transition: border-color 0.15s ease;
+  transition: border-color 0.15s;
 }
-
 .manual-row .inp:focus {
   outline: none;
-  border-color: var(--accent, #a3e635);
+  border-color: var(--accent, #b8ff3c);
 }
 
-.manual-row .btn {
-  height: 44px;
-  padding: 0 1.4rem;
+/* Botones */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1.1rem;
   font-weight: 600;
   font-size: 0.88rem;
-  border-radius: 6px;
+  border-radius: var(--radius-sm, 12px);
+  border: 1px solid transparent;
   cursor: pointer;
-  background: var(--bg-card, #111422);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.06));
-  color: #ffffff;
-  transition: background-color 0.15s;
+  transition: all 0.15s;
+  min-height: 44px;
+  white-space: nowrap;
 }
-
-.manual-row .btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.04);
+.btn-primary {
+  background: var(--accent, #b8ff3c);
+  color: #11140a;
+  border-color: transparent;
 }
+.btn-primary:hover:not(:disabled) { background: var(--accent-press, #a2e82f); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.manual-row .btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+.btn-ghost {
+  background: transparent;
+  color: #94a3b8;
+  border-color: var(--border, #2b313d);
+  width: 100%;
+  margin-top: 0.25rem;
 }
+.btn-ghost:hover { background: rgba(255, 255, 255, 0.04); color: #ffffff; }
 
-/* Animaciones Estándar de Entrada */
+/* Animación de entrada */
 .fade-up {
   opacity: 0;
   transform: translateY(8px);
-  animation: slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
-
 @keyframes slideUp { to { opacity: 1; transform: translateY(0); } }
 
-/* Optimización Responsive */
 @media (max-width: 560px) {
-  .video-wrap {
-    aspect-ratio: 16 / 11 !important;
-  }
+  .esc-card { padding: 1.25rem 1rem 2rem; }
+  .video-wrap { aspect-ratio: 16 / 11; }
 }
 </style>
