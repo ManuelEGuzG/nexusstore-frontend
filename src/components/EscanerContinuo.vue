@@ -3,9 +3,8 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser'
 
 /**
- * Escáner en MODO CONTINUO con control de cantidad flotante.
- * La cámara queda abierta. Cada producto escaneado aparece en un panel
- * flotante abajo, con botones +/− para ajustar la cantidad sin cerrar la cámara.
+ * Escáner ULTRA-EFICIENTE con aceleración por Hardware (BarcodeDetector)
+ * Calibrado con alertas visuales instantáneas y sonido amplificado.
  */
 
 interface ItemEscaneado {
@@ -15,7 +14,7 @@ interface ItemEscaneado {
 }
 
 const props = defineProps<{
-  items: ItemEscaneado[] // El carrito actual para la previsualización en lote
+  items: ItemEscaneado[]
 }>()
 
 const emit = defineEmits<{
@@ -28,32 +27,85 @@ const videoRef = ref<HTMLVideoElement | null>(null)
 const error = ref('')
 const cargando = ref(true)
 
-const DEBOUNCE = 1500
+// CONTROL DE DUPLICADOS: Bloquea el mismo código por 1.8 segundos para evitar ráfagas
+const DEBOUNCE = 1800
 let ultimoCodigo = ''
 let ultimoMomento = 0
 
 let reader: BrowserMultiFormatReader | null = null
 let controls: IScannerControls | null = null
 let audioCtx: AudioContext | null = null
+let detectorLoopId: number | null = null
 
 onMounted(async () => {
   try {
-    reader = new BrowserMultiFormatReader()
-    controls = await reader.decodeFromVideoDevice(
-      undefined,
-      videoRef.value!,
-      (result) => {
-        if (!result) return
-        const codigo = result.getText()
-        const ahora = Date.now()
-        
-        if (codigo === ultimoCodigo && ahora - ultimoMomento < DEBOUNCE) return
-        
-        ultimoCodigo = codigo
-        ultimoMomento = ahora
-        emit('leido', codigo)
+    cargando.value = true
+
+    // Inicializar transmisión de la cámara
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: 'environment',
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
       },
-    )
+    })
+
+    if (videoRef.value) {
+      videoRef.value.srcObject = stream
+    }
+
+    // Autofoco Continuo nativo en el hardware móvil
+    const track = stream.getVideoTracks()[0]
+    if (track && typeof track.getCapabilities === 'function') {
+      const capabilities = track.getCapabilities() as any
+      if (capabilities?.focusMode?.includes('continuous')) {
+        await track
+          .applyConstraints({
+            advanced: [{ focusMode: 'continuous' }],
+          } as any)
+          .catch(() => {})
+      }
+    }
+
+    // DETECTOR POR HARDWARE (Aceleración por GPU nativa)
+    if ('BarcodeDetector' in window) {
+      const formatosSoportados = await (window as any).BarcodeDetector.getSupportedFormats()
+      const formatosComerciales = ['ean_13', 'ean_8', 'upc_a'].filter((f) =>
+        formatosSoportados.includes(f),
+      )
+
+      const detector = new (window as any).BarcodeDetector({ formats: formatosComerciales })
+
+      const procesarCuadroNativo = async () => {
+        if (!videoRef.value || videoRef.value.paused || videoRef.value.ended) {
+          detectorLoopId = requestAnimationFrame(procesarCuadroNativo)
+          return
+        }
+        try {
+          const barcodes = await detector.detect(videoRef.value)
+          if (barcodes.length > 0) {
+            evaluarCodigo(barcodes[0].rawValue)
+          }
+        } catch {
+          /* Ignorar fallos de cuadro */
+        }
+        detectorLoopId = requestAnimationFrame(procesarCuadroNativo)
+      }
+
+      detectorLoopId = requestAnimationFrame(procesarCuadroNativo)
+    } else {
+      // RESPALDO: Motor optimizado ZXing si el navegador no tiene soporte nativo
+      const hints = new Map()
+      hints.set(2, [0, 1, 4]) // EAN_13, EAN_8, UPC_A
+
+      reader = new BrowserMultiFormatReader(hints)
+      ;(reader as any).timeBetweenDecodingAttempts = 40
+
+      controls = await reader.decodeFromVideoDevice(undefined, videoRef.value!, (result) => {
+        if (result) evaluarCodigo(result.getText())
+      })
+    }
+
     cargando.value = false
   } catch (e: any) {
     cargando.value = false
@@ -69,33 +121,65 @@ onMounted(async () => {
   }
 })
 
+// Filtro inteligente de ráfagas repetidas con feedback en tiempo real
+function evaluarCodigo(codigo: string) {
+  const ahora = Date.now()
+
+  // Si es el mismo código y está dentro del tiempo de gracia, se ignora por completo
+  if (codigo === ultimoCodigo && ahora - ultimoMomento < DEBOUNCE) {
+    return
+  }
+
+  ultimoCodigo = codigo
+  ultimoMomento = ahora
+
+  // ACCIÓN INMEDIATA: Desparar la notificación local en el HUD y el Beep amplificado al instante
+  avisar(`Leído: ${codigo}`, true)
+
+  // Comunicar al componente padre para que busque el producto e incremente el inventario
+  emit('leido', codigo)
+}
+
 function detener() {
-  try { controls?.stop() } catch { /* ignore */ }
+  if (detectorLoopId) cancelAnimationFrame(detectorLoopId)
+  try {
+    controls?.stop()
+  } catch {}
+  try {
+    const stream = videoRef.value?.srcObject as MediaStream
+    stream?.getTracks().forEach((t) => t.stop())
+  } catch {}
   controls = null
 }
 
 onBeforeUnmount(detener)
 
-// Beep acústico de confirmación posicional (Invocado por el padre vía ref)
+// Generador de audio nativo con volumen incrementado
 function beep(exito: boolean) {
   try {
     audioCtx = audioCtx || new (window.AudioContext || (window as any).webkitAudioContext)()
     const osc = audioCtx.createOscillator()
     const gain = audioCtx.createGain()
-    
+
     osc.connect(gain)
     gain.connect(audioCtx.destination)
-    
+
     osc.frequency.value = exito ? 880 : 300
-    gain.gain.value = 0.06
-    
+    // VOLUMEN SUBIDO: De 0.05 a 0.35 para una respuesta acústica clara en entornos ruidosos
+    gain.gain.value = 0.35
+
     osc.start()
-    osc.stop(audioCtx.currentTime + (exito ? 0.08 : 0.18))
-  } catch { /* Falla silenciosa si el navegador restringe el audio */ }
+    osc.stop(audioCtx.currentTime + (exito ? 0.07 : 0.15))
+  } catch {
+    /* El navegador bloqueó el audio */
+  }
 }
 
-// Control de Toasts HUD internos sobre el video
-interface Toast { id: number; texto: string; ok: boolean }
+interface Toast {
+  id: number
+  texto: string
+  ok: boolean
+}
 const toasts = ref<Toast[]>([])
 let toastId = 0
 
@@ -103,20 +187,21 @@ function avisar(texto: string, ok = true) {
   const id = ++toastId
   toasts.value.push({ id, texto, ok })
   beep(ok)
-  
+
   setTimeout(() => {
     toasts.value = toasts.value.filter((t) => t.id !== id)
-  }, 1600)
+  }, 1400)
 }
 
 defineExpose({ avisar })
 
-// Entrada manual alternativa
 const manual = ref('')
 function enviarManual() {
   const codLimpio = manual.value.trim()
   if (codLimpio) {
     manual.value = ''
+    // En manual también disparamos el aviso instantáneo
+    avisar(`Código manual: ${codLimpio}`, true)
     emit('leido', codLimpio)
   }
 }
@@ -129,8 +214,12 @@ function terminarFlujo() {
 
 <template>
   <div class="esc-bg" @click.self="terminarFlujo" @keydown.escape="terminarFlujo" tabindex="-1">
-    <div class="esc-card card fade-up" role="dialog" aria-modal="true" aria-labelledby="modal-continuous-title">
-      
+    <div
+      class="esc-card card fade-up"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-continuous-title"
+    >
       <div class="esc-header">
         <h3 id="modal-continuous-title">Escaneo Continuo de Ventas</h3>
         <button type="button" class="btn-cerrar-top" @click="terminarFlujo">×</button>
@@ -138,21 +227,16 @@ function terminarFlujo() {
 
       <div v-if="!error" class="video-wrap">
         <video ref="videoRef" class="video" autoplay muted playsinline></video>
-        
-        <div class="marco" :class="{ 'scanning': !cargando }">
+
+        <div class="marco" :class="{ scanning: !cargando }">
           <div class="linea-laser" v-if="!cargando"></div>
         </div>
-        
+
         <p v-if="cargando" class="status-text text-pulse">Inicializando canal de video…</p>
         <p v-else class="status-text hint">Alinee el código del artículo</p>
 
         <div class="toasts" aria-live="polite">
-          <div
-            v-for="t in toasts"
-            :key="t.id"
-            class="toast"
-            :class="t.ok ? 'ok' : 'no'"
-          >
+          <div v-for="t in toasts" :key="t.id" class="toast" :class="t.ok ? 'ok' : 'no'">
             {{ t.texto }}
           </div>
         </div>
@@ -173,14 +257,18 @@ function terminarFlujo() {
                 class="cp-btn"
                 aria-label="Restar unidad"
                 @click="it.product_id !== null && emit('cambiarCantidad', it.product_id, -1)"
-              >−</button>
+              >
+                −
+              </button>
               <span class="cp-cant">{{ it.cantidad }}</span>
               <button
                 type="button"
                 class="cp-btn"
                 aria-label="Sumar unidad"
                 @click="it.product_id !== null && emit('cambiarCantidad', it.product_id, 1)"
-              >+</button>
+              >
+                +
+              </button>
             </div>
           </li>
         </ul>
@@ -194,10 +282,15 @@ function terminarFlujo() {
             inputmode="numeric"
             class="inp"
             placeholder="O digite el código de barras…"
-            autoComplete="off"
+            autocomplete="off"
             @keyup.enter="enviarManual"
           />
-          <button type="button" class="btn btn-ghost" :disabled="!manual.trim()" @click="enviarManual">
+          <button
+            type="button"
+            class="btn btn-ghost"
+            :disabled="!manual.trim()"
+            @click="enviarManual"
+          >
             Agregar
           </button>
         </div>
@@ -206,30 +299,27 @@ function terminarFlujo() {
       <button type="button" class="btn btn-primary btn-block terminar" @click="terminarFlujo">
         Finalizar Venta
       </button>
-
     </div>
   </div>
 </template>
 
 <style scoped>
-/* Fondo e Inyección de Centrado Absoluto */
 .esc-bg {
-  position: fixed; 
-  inset: 0; 
+  position: fixed;
+  inset: 0;
   background: rgba(6, 8, 13, 0.88);
-  display: flex; 
+  display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1rem; 
+  padding: 1rem;
   z-index: 150;
   backdrop-filter: blur(5px);
   outline: none;
 }
 
-/* Tarjeta Modal: Resguardo de Proporción e Inyección Limpia de Estilos */
 .esc-card {
-  padding: 1.6rem; 
-  width: 100%; 
+  padding: 1.6rem;
+  width: 100%;
   max-width: 440px;
   min-width: 320px;
   max-height: 94vh;
@@ -239,12 +329,11 @@ function terminarFlujo() {
   flex-direction: column;
 }
 
-/* Reset protector de herencias del layout global */
-.card { 
-  background: var(--bg-card, #111422); 
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.06)); 
-  border-radius: 8px; 
-  display: block !important; 
+.card {
+  background: var(--bg-card, #111422);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.06));
+  border-radius: 8px;
+  display: block !important;
 }
 
 .esc-header {
@@ -277,7 +366,6 @@ function terminarFlujo() {
   color: #ffffff;
 }
 
-/* Área de Renderizado de Video: Forzado Estricto 4:3 */
 .video-wrap {
   position: relative;
   width: 100%;
@@ -295,7 +383,6 @@ function terminarFlujo() {
   object-fit: cover;
 }
 
-/* Retícula de Enfoque Rectangular Amplia */
 .marco {
   position: absolute;
   inset: 20% 12%;
@@ -310,7 +397,6 @@ function terminarFlujo() {
   border-color: var(--accent, #a3e635);
 }
 
-/* Línea Láser Dinámica */
 .linea-laser {
   position: absolute;
   left: 0;
@@ -322,9 +408,15 @@ function terminarFlujo() {
 }
 
 @keyframes laserSweep {
-  0% { top: 0%; }
-  50% { top: 100%; }
-  100% { top: 0%; }
+  0% {
+    top: 0%;
+  }
+  50% {
+    top: 100%;
+  }
+  100% {
+    top: 0%;
+  }
 }
 
 .status-text {
@@ -342,17 +434,17 @@ function terminarFlujo() {
 .hint {
   color: #cbd5e1;
 }
-
 .text-pulse {
   animation: pulseOpacity 1.5s ease-in-out infinite;
   color: #64748b;
 }
 
 @keyframes pulseOpacity {
-  50% { opacity: 0.5; }
+  50% {
+    opacity: 0.5;
+  }
 }
 
-/* HUD de Toasts Internos Animados */
 .toasts {
   position: absolute;
   top: var(--sp-2, 0.75rem);
@@ -367,7 +459,6 @@ function terminarFlujo() {
 
 .toast {
   font-family: var(--font-display, sans-serif);
-  状况: 700;
   font-weight: 700;
   font-size: var(--fs-sm, 0.88rem);
   padding: 0.45rem 1.1rem;
@@ -376,15 +467,26 @@ function terminarFlujo() {
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
 }
 
-.toast.ok { background: var(--accent, #a3e635); color: #111422; }
-.toast.no { background: var(--warn, #f87171); color: #ffffff; }
-
-@keyframes pop {
-  from { transform: scale(0.85); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
+.toast.ok {
+  background: var(--accent, #a3e635);
+  color: #111422;
+}
+.toast.no {
+  background: var(--warn, #f87171);
+  color: #ffffff;
 }
 
-/* Bloque de Errores Críticos */
+@keyframes pop {
+  from {
+    transform: scale(0.85);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
 .error-box {
   padding: var(--sp-4, 1.5rem);
   background: rgba(239, 68, 68, 0.06);
@@ -402,7 +504,6 @@ function terminarFlujo() {
   font-weight: 500;
 }
 
-/* Ledger Desplegable de Modificación de Unidades */
 .control-panel {
   background: rgba(0, 0, 0, 0.2);
   border: 1px solid var(--border, rgba(255, 255, 255, 0.06));
@@ -414,10 +515,16 @@ function terminarFlujo() {
   overscroll-behavior: contain;
 }
 
-/* Scrollbar estilizada sutil para el panel */
-.control-panel::-webkit-scrollbar { width: 5px; }
-.control-panel::-webkit-scrollbar-track { background: transparent; }
-.control-panel::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+.control-panel::-webkit-scrollbar {
+  width: 5px;
+}
+.control-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+.control-panel::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
 
 .cp-label {
   color: #64748b;
@@ -461,7 +568,6 @@ function terminarFlujo() {
   gap: 0.5rem;
 }
 
-/* Botones con Target Táctil Incrementado a 44px */
 .cp-btn {
   width: 44px;
   height: 44px;
@@ -473,14 +579,16 @@ function terminarFlujo() {
   cursor: pointer;
   display: grid;
   place-items: center;
-  transition: transform 0.05s ease, background-color 0.15s, border-color 0.15s;
+  transition:
+    transform 0.05s ease,
+    background-color 0.15s,
+    border-color 0.15s;
 }
 
 .cp-btn:hover {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(255, 255, 255, 0.15);
 }
-
 .cp-btn:active {
   transform: scale(0.92);
 }
@@ -495,11 +603,9 @@ function terminarFlujo() {
   font-variant-numeric: tabular-nums;
 }
 
-/* Entrada Manual de Respaldo */
 .manual {
   margin-bottom: var(--sp-3, 1rem);
 }
-
 .manual-row {
   display: flex;
   gap: var(--sp-2, 0.75rem);
@@ -507,11 +613,11 @@ function terminarFlujo() {
 
 .manual-row .inp {
   flex: 1;
-  background: rgba(0, 0, 0, 0.15); 
+  background: rgba(0, 0, 0, 0.15);
   border: 1px solid var(--border, rgba(255, 255, 255, 0.06));
-  border-radius: 6px; 
-  padding: 0.7rem 0.9rem; 
-  color: #ffffff; 
+  border-radius: 6px;
+  padding: 0.7rem 0.9rem;
+  color: #ffffff;
   min-height: 44px;
   font-size: 0.92rem;
   transition: border-color 0.15s ease;
@@ -535,7 +641,6 @@ function terminarFlujo() {
   opacity: 0.4;
   cursor: not-allowed;
 }
-
 .terminar {
   min-height: 46px;
   font-weight: 700;
@@ -544,22 +649,25 @@ function terminarFlujo() {
   cursor: pointer;
 }
 
-/* Animaciones Estándar de Entrada */
 .fade-up {
   opacity: 0;
   transform: translateY(8px);
   animation: slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-@keyframes slideUp { to { opacity: 1; transform: translateY(0); } }
+@keyframes slideUp {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 
-/* Optimización Responsive */
 @media (max-width: 560px) {
   .esc-card {
-    padding-bottom: 2rem; 
+    padding-bottom: 2rem;
   }
   .video-wrap {
-    aspect-ratio: 16 / 11 !important; /* Más plano para no empujar los controles táctiles fuera del viewport móvil */
+    aspect-ratio: 16 / 11 !important;
   }
 }
 </style>

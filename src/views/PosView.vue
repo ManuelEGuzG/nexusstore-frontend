@@ -9,7 +9,11 @@ import EscanerContinuo from '@/components/EscanerContinuo.vue'
 const router = useRouter()
 const pos = usePosStore()
 
-interface Producto { id: number; nombre: string; precio: number }
+interface Producto {
+  id: number
+  nombre: string
+  precio: number
+}
 
 const productos = ref<Producto[]>([])
 const busqueda = ref('')
@@ -19,7 +23,7 @@ const mostrarMontoLibre = ref(false)
 const mostrarPago = ref(false)
 const mostrarTiquete = ref(false)
 const montoLibre = ref('')
-const carritoAbierto = ref(false) 
+const carritoAbierto = ref(false)
 
 const mostrarEscaner = ref(false)
 const escanerRef = ref<any>(null)
@@ -44,11 +48,15 @@ onMounted(async () => {
   try {
     const { data } = await api.get('/products')
     productos.value = data
-  } catch { /* Venta por monto libre disponible */ }
+  } catch {
+    /* Venta por monto libre disponible */
+  }
 })
 
-function fmt(n: number) { 
-  return '₡' + Number(n).toLocaleString('es-CR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) 
+function fmt(n: number) {
+  return (
+    '₡' + Number(n).toLocaleString('es-CR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+  )
 }
 
 function abrirMontoLibre() {
@@ -71,7 +79,11 @@ async function onCodigoLeido(codigo: string) {
   try {
     const { data } = await api.get(`/products/buscar/${codigo}`)
     if (data.encontrado) {
-      pos.agregarProducto({ id: data.producto.id, nombre: data.producto.nombre, precio: Number(data.producto.precio) })
+      pos.agregarProducto({
+        id: data.producto.id,
+        nombre: data.producto.nombre,
+        precio: Number(data.producto.precio),
+      })
       escanerRef.value?.avisar(`+ ${data.producto.nombre}`, true)
     }
   } catch (e: any) {
@@ -87,11 +99,11 @@ function ajustarCantidadEscaner(productId: number, delta: number) {
 
 async function abrirPago() {
   if (pos.vacio) return
-  try { 
+  try {
     const { data } = await api.get('/customers')
-    clientes.value = data 
-  } catch { 
-    clientes.value = [] 
+    clientes.value = data
+  } catch {
+    clientes.value = []
   }
   mostrarPago.value = true
 }
@@ -101,13 +113,16 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   if (tipo === 'fiado' && !clienteSeleccionado.value) return
   procesando.value = true
   try {
-    await pos.finalizar({ tipoPago: tipo, customerId: tipo === 'fiado' ? clienteSeleccionado.value : null })
+    await pos.finalizar({
+      tipoPago: tipo,
+      customerId: tipo === 'fiado' ? clienteSeleccionado.value : null,
+    })
     mostrarPago.value = false
     clienteSeleccionado.value = null
     carritoAbierto.value = false
     mostrarTiquete.value = true
-  } finally { 
-    procesando.value = false 
+  } finally {
+    procesando.value = false
   }
 }
 </script>
@@ -116,7 +131,20 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   <div class="pos">
     <header class="pos-top">
       <button class="back" @click="router.push('/')" aria-label="Volver">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <line x1="19" y1="12" x2="5" y2="12"></line>
+          <polyline points="12 19 5 12 12 5"></polyline>
+        </svg>
       </button>
       <h1 class="pos-title">Punto de Venta</h1>
       <div class="estado">
@@ -134,29 +162,99 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
       <section class="panel-prod">
         <div class="acciones">
           <div class="buscar-contenedor">
-            <svg class="buscar-icono" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-            <input v-model="busqueda" class="buscar" type="search" placeholder="Buscar producto por nombre..." />
+            <svg
+              class="buscar-icono"
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input
+              v-model="busqueda"
+              class="buscar"
+              type="search"
+              placeholder="Buscar producto por nombre..."
+            />
           </div>
           <button class="btn btn-ghost accion-btn" @click="mostrarEscaner = true">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"></path><path d="M17 3h2a2 2 0 0 1 2 2v2"></path><path d="M21 17v2a2 2 0 0 1-2 2h-2"></path><path d="M7 21H5a2 2 0 0 1-2-2v-2"></path></svg>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
+              <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+              <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
+              <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
+            </svg>
             Escanear
           </button>
           <button class="btn btn-primary accion-btn" @click="abrirMontoLibre">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
             Monto libre
           </button>
         </div>
 
         <div v-if="productosFiltrados.length" class="grid-prod">
-          <button v-for="p in productosFiltrados" :key="p.id" class="prod-btn" @click="pos.agregarProducto(p)">
+          <button
+            v-for="p in productosFiltrados"
+            :key="p.id"
+            class="prod-btn"
+            @click="pos.agregarProducto(p)"
+          >
             <span class="prod-nombre">{{ p.nombre }}</span>
             <span class="prod-precio">{{ fmt(p.precio) }}</span>
           </button>
         </div>
         <div v-else class="vacio-prod card animate-fade-in">
-          <svg class="vacio-icono" xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line><polygon points="12 22.08 12 12 3 6.92 3 17.08 12 22.08"></polygon><polygon points="12 12 21 6.92 21 17.08 12 22.08 12 12"></polygon><polygon points="12 12 3 6.92 12 1.84 21 6.92 12 12"></polygon></svg>
+          <svg
+            class="vacio-icono"
+            xmlns="http://www.w3.org/2000/svg"
+            width="36"
+            height="36"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
+            <polygon points="12 22.08 12 12 3 6.92 3 17.08 12 22.08"></polygon>
+            <polygon points="12 12 21 6.92 21 17.08 12 22.08 12 12"></polygon>
+            <polygon points="12 12 3 6.92 12 1.84 21 6.92 12 12"></polygon>
+          </svg>
           <p class="vp-title">No hay productos cargados</p>
-          <p class="dim">Podés vender por monto libre, escanear códigos de barras o sincronizar el catálogo.</p>
+          <p class="dim">
+            Podés vender por monto libre, escanear códigos de barras o sincronizar el catálogo.
+          </p>
         </div>
       </section>
 
@@ -164,12 +262,40 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
         <div class="cart-head">
           <h2>Venta Actual</h2>
           <button class="cerrar-cart" @click="carritoAbierto = false" aria-label="Cerrar carrito">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
           </button>
         </div>
 
         <div v-if="pos.vacio" class="cart-vacio">
-          <svg class="vacio-cart-icono" xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+          <svg
+            class="vacio-cart-icono"
+            xmlns="http://www.w3.org/2000/svg"
+            width="36"
+            height="36"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <circle cx="9" cy="21" r="1"></circle>
+            <circle cx="20" cy="21" r="1"></circle>
+            <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+          </svg>
           <p class="vc-title">El carrito está vacío</p>
           <p class="dim">Seleccioná ítems del catálogo o utilizá el escáner de códigos.</p>
         </div>
@@ -180,16 +306,37 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
               <div class="ci-top">
                 <span class="ci-desc">{{ it.descripcion }}</span>
                 <button class="qx" @click="pos.quitar(i)" aria-label="Eliminar ítem">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
                 </button>
               </div>
               <div class="ci-bottom">
                 <div class="ci-ctrl">
-                  <button class="qbtn" :disabled="it.whitespace || it.cantidad <= 1" @click="pos.cambiarCantidad(i, it.cantidad - 1)">−</button>
-                  <span class="qcant">{{ it.whitespace || it.whitespace || it.whitespace || it.cantidad }}</span>
+                  <button
+                    class="qbtn"
+                    :disabled="it.cantidad <= 1"
+                    @click="pos.cambiarCantidad(i, it.cantidad - 1)"
+                  >
+                    −
+                  </button>
+                  <span class="qcant">{{ it.cantidad }}</span>
                   <button class="qbtn" @click="pos.cambiarCantidad(i, it.cantidad + 1)">+</button>
                 </div>
-                <span class="ci-sub">{{ fmt(it.cantidad * it.precio_unitario - it.descuento) }}</span>
+                <span class="ci-sub">{{
+                  fmt(it.cantidad * it.precio_unitario - it.descuento)
+                }}</span>
               </div>
             </li>
           </ul>
@@ -199,7 +346,11 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
               <span>Total a cobrar</span>
               <span class="total-num">{{ fmt(pos.total) }}</span>
             </div>
-            <button class="btn btn-primary btn-block cobrar" :disabled="pos.vacio" @click="abrirPago">
+            <button
+              class="btn btn-primary btn-block cobrar"
+              :disabled="pos.vacio"
+              @click="abrirPago"
+            >
               Proceder al Pago
             </button>
           </div>
@@ -207,9 +358,16 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
       </section>
     </div>
 
-    <div v-if="!pos.vacio" class="cart-bar" :class="{ 'cart-bar-oculto': carritoAbierto }" @click="carritoAbierto = true">
+    <div
+      v-if="!pos.vacio"
+      class="cart-bar"
+      :class="{ 'cart-bar-oculto': carritoAbierto }"
+      @click="carritoAbierto = true"
+    >
       <div class="cb-info">
-        <span class="cb-count">{{ totalItems }} {{ totalItems === 1 ? 'ítem' : 'ítems' }} en cuenta</span>
+        <span class="cb-count"
+          >{{ totalItems }} {{ totalItems === 1 ? 'ítem' : 'ítems' }} en cuenta</span
+        >
         <span class="cb-total">{{ fmt(pos.total) }}</span>
       </div>
       <span class="cb-ver">Ver detalle ›</span>
@@ -226,17 +384,24 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
             <h3>Monto libre</h3>
             <p class="dim">Ingresá un valor directo para añadirlo a la cuenta actual.</p>
           </div>
-          <input 
+          <input
             ref="inputMontoRef"
-            v-model="montoLibre" 
-            type="number" 
-            inputmode="decimal" 
-            placeholder="₡ 0" 
-            class="monto-input" 
-            @keyup.enter="confirmarMontoLibre" />
+            v-model="montoLibre"
+            type="number"
+            inputmode="decimal"
+            placeholder="₡ 0"
+            class="monto-input"
+            @keyup.enter="confirmarMontoLibre"
+          />
           <div class="modal-acciones">
             <button class="btn btn-ghost" @click="mostrarMontoLibre = false">Cancelar</button>
-            <button class="btn btn-primary" :disabled="!montoLibre || parseFloat(montoLibre) <= 0" @click="confirmarMontoLibre">Agregar al Carrito</button>
+            <button
+              class="btn btn-primary"
+              :disabled="!montoLibre || parseFloat(montoLibre) <= 0"
+              @click="confirmarMontoLibre"
+            >
+              Agregar al Carrito
+            </button>
           </div>
         </div>
       </div>
@@ -250,12 +415,47 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
             <p class="dim">Seleccioná el método de liquidación para finalizar.</p>
           </div>
           <div class="pago-opciones">
-            <button class="btn btn-primary pago-op" :disabled="procesando" @click="cobrar('efectivo')">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="12" cy="12" r="2"></circle><path d="M6 12h.01M18 12h.01"></path></svg>
+            <button
+              class="btn btn-primary pago-op"
+              :disabled="procesando"
+              @click="cobrar('efectivo')"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect x="2" y="6" width="20" height="12" rx="2"></rect>
+                <circle cx="12" cy="12" r="2"></circle>
+                <path d="M6 12h.01M18 12h.01"></path>
+              </svg>
               Efectivo
             </button>
-            <button class="btn btn-secondary pago-op" :disabled="procesando" @click="cobrar('manual')">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
+            <button
+              class="btn btn-secondary pago-op"
+              :disabled="procesando"
+              @click="cobrar('manual')"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
+                <line x1="1" y1="10" x2="23" y2="10"></line>
+              </svg>
               SINPE Móvil / Tarjeta
             </button>
           </div>
@@ -263,28 +463,58 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
             <p class="dim pago-sub">Cargar Cuenta Corriente (Crédito):</p>
             <select v-model="clienteSeleccionado" class="select-cliente">
               <option :value="null">Elegí un cliente de la lista…</option>
-              <option v-for="c in clientes" :key="c.id" :value="c.id">{{ c.nombre }} (Saldo: {{ fmt(c.saldo) }})</option>
+              <option v-for="c in clientes" :key="c.id" :value="c.id">
+                {{ c.nombre }} (Saldo: {{ fmt(c.saldo) }})
+              </option>
             </select>
-            <button class="btn btn-warn btn-block fiar" :disabled="procesando || !clienteSeleccionado" @click="cobrar('fiado')">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+            <button
+              class="btn btn-warn btn-block fiar"
+              :disabled="procesando || !clienteSeleccionado"
+              @click="cobrar('fiado')"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                <polyline points="7 3 7 8 15 8"></polyline>
+              </svg>
               Confirmar Cuenta Corriente
             </button>
           </div>
-          <button class="btn btn-ghost btn-block cerrar-modal" @click="mostrarPago = false">Cancelar</button>
+          <button class="btn btn-ghost btn-block cerrar-modal" @click="mostrarPago = false">
+            Cancelar
+          </button>
         </div>
       </div>
     </Transition>
 
     <ComprobanteTiquete
       v-if="mostrarTiquete && pos.ultimaVenta"
-      :uuid="pos.ultimaVenta.uuid" :items="pos.ultimaVenta.items"
-      :total="pos.ultimaVenta.total" :forma-pago="pos.ultimaVenta.formaPago"
-      :fecha="pos.ultimaVenta.fecha" @cerrar="mostrarTiquete = false" />
+      :uuid="pos.ultimaVenta.uuid"
+      :items="pos.ultimaVenta.items"
+      :total="pos.ultimaVenta.total"
+      :forma-pago="pos.ultimaVenta.formaPago"
+      :fecha="pos.ultimaVenta.fecha"
+      @cerrar="mostrarTiquete = false"
+    />
 
     <EscanerContinuo
-      v-if="mostrarEscaner" ref="escanerRef" :items="pos.items"
-      @leido="onCodigoLeido" @cambiar-cantidad="ajustarCantidadEscaner"
-      @cerrar="mostrarEscaner = false" />
+      v-if="mostrarEscaner"
+      ref="escanerRef"
+      :items="pos.items"
+      @leido="onCodigoLeido"
+      @cambiar-cantidad="ajustarCantidadEscaner"
+      @cerrar="mostrarEscaner = false"
+    />
   </div>
 </template>
 
@@ -303,45 +533,49 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 
 /* Header Principal */
 .pos-top {
-  display: flex; 
-  align-items: center; 
+  display: flex;
+  align-items: center;
   gap: 1rem;
-  padding: 0.75rem clamp(1rem, 3vw, 1.5rem); 
+  padding: 0.75rem clamp(1rem, 3vw, 1.5rem);
   border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.06));
   background: var(--bg-header, #121522);
   flex-shrink: 0;
 }
 
 .back {
-  width: 40px; 
-  height: 40px; 
-  flex-shrink: 0; 
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
   border-radius: var(--radius-sm, 8px);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.08)); 
-  background: rgba(255, 255, 255, 0.02); 
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  background: rgba(255, 255, 255, 0.02);
   color: var(--text, #e2e8f0);
   cursor: pointer;
   display: inline-grid;
   place-items: center;
   transition: all 0.2s ease;
 }
-.back:hover { 
-  background: rgba(255, 255, 255, 0.06); 
+.back:hover {
+  background: rgba(255, 255, 255, 0.06);
   border-color: var(--accent, #a3e635);
   color: var(--accent, #a3e635);
 }
 
-.pos-title { 
-  font-size: clamp(1.1rem, 2vw, 1.25rem); 
+.pos-title {
+  font-size: clamp(1.1rem, 2vw, 1.25rem);
   font-weight: 600;
   letter-spacing: -0.02em;
   color: #ffffff;
-  flex: 1; 
+  flex: 1;
   margin: 0;
 }
 
 /* Estado de Red e Indicadores */
-.estado { display: flex; gap: 0.6rem; align-items: center; }
+.estado {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
 .chip {
   display: inline-flex;
   align-items: center;
@@ -358,7 +592,10 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   border-color: rgba(34, 197, 94, 0.15);
 }
 .chip.on .indicator {
-  width: 6px; height: 6px; background: #4ade80; border-radius: 50%;
+  width: 6px;
+  height: 6px;
+  background: #4ade80;
+  border-radius: 50%;
 }
 .chip.off {
   background: rgba(239, 68, 68, 0.08);
@@ -366,7 +603,10 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   border-color: rgba(239, 68, 68, 0.15);
 }
 .chip.off .indicator {
-  width: 6px; height: 6px; background: #f87171; border-radius: 50%;
+  width: 6px;
+  height: 6px;
+  background: #f87171;
+  border-radius: 50%;
 }
 .chip.pend {
   background: rgba(234, 179, 8, 0.1);
@@ -376,31 +616,31 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 }
 
 /* Layout del cuerpo */
-.pos-body { 
-  flex: 1; 
+.pos-body {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 1rem; 
-  padding: clamp(0.75rem, 2vw, 1.25rem); 
-  overflow: hidden; 
-  min-height: 0; 
+  gap: 1rem;
+  padding: clamp(0.75rem, 2vw, 1.25rem);
+  overflow: hidden;
+  min-height: 0;
 }
 
-.panel-prod { 
+.panel-prod {
   flex: 1;
-  display: flex; 
-  flex-direction: column; 
-  min-height: 0; 
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 /* Filtros y Acciones superiores */
-.acciones { 
-  display: flex; 
-  align-items: center; /* Solución: Fuerza alineación vertical matemática perfecta */
-  gap: 0.6rem; 
-  margin-bottom: 1rem; 
-  flex-shrink: 0; 
-  flex-wrap: wrap; 
+.acciones {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .buscar-contenedor {
@@ -423,18 +663,17 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 .buscar {
   width: 100%;
   display: block;
-  background: #141824; 
+  background: #141824;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px; 
-  padding: 0.65rem 0.9rem 0.65rem 2.4rem; 
+  border-radius: 8px;
+  padding: 0.65rem 0.9rem 0.65rem 2.4rem;
   color: #ffffff;
-  font-size: 0.9rem; 
-  line-height: 1.25rem; /* Asegura un baseline idéntico a los botones */
+  font-size: 0.9rem;
+  line-height: 1.25rem;
   box-sizing: border-box;
   transition: all 0.2s ease;
 }
 
-/* Remueve artefactos nativos de Webkit que distorsionan alturas en inputs de tipo search */
 .buscar::-webkit-search-decoration,
 .buscar::-webkit-search-cancel-button,
 .buscar::-webkit-search-results-button,
@@ -443,10 +682,10 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   appearance: none;
 }
 
-.buscar:focus { 
-  outline: none; 
-  border-color: var(--accent, #a3e635); 
-  box-shadow: 0 0 0 3px rgba(163, 230, 53, 0.12); 
+.buscar:focus {
+  outline: none;
+  border-color: var(--accent, #a3e635);
+  box-shadow: 0 0 0 3px rgba(163, 230, 53, 0.12);
 }
 .buscar-contenedor:focus-within .buscar-icono {
   color: var(--accent, #a3e635);
@@ -461,7 +700,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   padding: 0.65rem 1.1rem;
   font-weight: 600;
   font-size: 0.88rem;
-  line-height: 1.25rem; /* Sincroniza la altura exacta de la caja de texto */
+  line-height: 1.25rem;
   border-radius: 8px;
   border: 1px solid transparent;
   cursor: pointer;
@@ -480,7 +719,9 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   color: #ffffff;
   border-color: rgba(255, 255, 255, 0.08);
 }
-.btn-secondary:hover:not(:disabled) { background: rgba(255, 255, 255, 0.08); }
+.btn-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
 
 .btn-ghost {
   background: transparent;
@@ -496,196 +737,514 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   color: #fde047;
   border-color: rgba(234, 179, 8, 0.2);
 }
-.btn-warn:hover:not(:disabled) { background: rgba(234, 179, 8, 0.15); }
-.btn-block { width: 100%; }
-.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.btn-warn:hover:not(:disabled) {
+  background: rgba(234, 179, 8, 0.15);
+}
+.btn-block {
+  width: 100%;
+}
+.btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
 
-.accion-btn { 
-  flex: 1; 
+.accion-btn {
+  flex: 1;
   min-width: 110px;
   white-space: nowrap;
 }
 
 /* Catálogo Grid */
 .grid-prod {
-  display: grid; 
+  display: grid;
   grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
-  gap: 0.6rem; 
-  overflow-y: auto; 
-  align-content: start; 
-  padding-right: 0.25rem; 
+  gap: 0.6rem;
+  overflow-y: auto;
+  align-content: start;
+  padding-right: 0.25rem;
   min-height: 0;
   flex: 1;
 }
 
 /* Tarjeta de Producto */
 .prod-btn {
-  background: #111422; 
-  border: 1px solid rgba(255, 255, 255, 0.06); 
+  background: #111422;
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 8px;
-  padding: 0.9rem; 
-  cursor: pointer; 
-  display: flex; 
-  flex-direction: column; 
+  padding: 0.9rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
   gap: 0.5rem;
-  text-align: left; 
-  min-height: 100px; 
+  text-align: left;
+  min-height: 100px;
   justify-content: space-between;
   position: relative;
   transition: all 0.15s ease;
 }
-.prod-btn:hover { 
-  border-color: var(--accent, #a3e635); 
+.prod-btn:hover {
+  border-color: var(--accent, #a3e635);
   background: #15192b;
 }
-.prod-btn:active { transform: scale(0.98); }
+.prod-btn:active {
+  transform: scale(0.98);
+}
 
-.prod-nombre { font-weight: 500; font-size: 0.85rem; line-height: 1.3; color: #f1f5f9; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.prod-precio { color: var(--accent, #a3e635); font-weight: 700; font-size: 1rem; letter-spacing: -0.01em; }
+.prod-nombre {
+  font-weight: 500;
+  font-size: 0.85rem;
+  line-height: 1.3;
+  color: #f1f5f9;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.prod-precio {
+  color: var(--accent, #a3e635);
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+}
 
 /* Estados vacíos corporativos */
-.vacio-prod, .cart-vacio { 
-  padding: 3rem 1.5rem; 
-  text-align: center; 
-  display: flex; 
-  flex-direction: column; 
-  align-items: center; 
+.vacio-prod,
+.cart-vacio {
+  padding: 3rem 1.5rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
-  background: rgba(255,255,255,0.01);
-  border: 1px dashed rgba(255,255,255,0.06);
+  background: rgba(255, 255, 255, 0.01);
+  border: 1px dashed rgba(255, 255, 255, 0.06);
   border-radius: 8px;
 }
-.vacio-icono, .vacio-cart-icono { color: rgba(255, 255, 255, 0.2); margin-bottom: 1rem; }
-.vp-title, .vc-title { font-weight: 600; font-size: 0.95rem; margin-bottom: 0.35rem; color: #ffffff; }
-.dim { color: rgba(255, 255, 255, 0.4); font-size: 0.82rem; line-height: 1.4; margin: 0; max-width: 280px; }
+.vacio-icono,
+.vacio-cart-icono {
+  color: rgba(255, 255, 255, 0.2);
+  margin-bottom: 1rem;
+}
+.vp-title,
+.vc-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-bottom: 0.35rem;
+  color: #ffffff;
+}
+.dim {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  margin: 0;
+  max-width: 280px;
+}
 
 /* Panel Carrito */
-.panel-cart { 
-  display: flex; 
-  flex-direction: column; 
-  min-height: 0; 
-  position: fixed; 
-  left: 0; right: 0; bottom: 0; 
+.panel-cart {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
   z-index: 55;
-  max-height: 85vh; 
+  max-height: 85vh;
   border-radius: 12px 12px 0 0;
-  transform: translateY(110%); 
+  transform: translateY(110%);
   transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 -12px 32px rgba(0,0,0,0.5);
+  box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.5);
   background: #111422;
-  border-top: 1px solid rgba(255,255,255,0.08);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   padding: 1.25rem;
 }
-.panel-cart.abierto { transform: translateY(0); }
-.cart-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; flex-shrink: 0; }
-.cart-head h2 { font-size: 1rem; font-weight: 600; color: #ffffff; margin: 0; text-transform: uppercase; letter-spacing: 0.03em; }
-.cerrar-cart { background: rgba(255,255,255,0.04); border: none; color: #ffffff; width: 32px; height: 32px; border-radius: 6px; cursor: pointer; display: grid; place-items: center; transition: background 0.2s; }
-.cerrar-cart:hover { background: rgba(255,255,255,0.1); }
-
-.cart-contenido { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.cart-items { list-style: none; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 0.4rem; min-height: 0; padding: 0 0.2rem 0 0; margin: 0; }
-.cart-item { background: #151926; border-radius: 6px; padding: 0.75rem; border: 1px solid rgba(255,255,255,0.02); }
-
-.ci-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; margin-bottom: 0.5rem; }
-.ci-desc { font-weight: 500; font-size: 0.85rem; line-height: 1.35; color: #e2e8f0; }
-.qx { background: rgba(239, 68, 68, 0.08); border: none; color: #f87171; width: 24px; height: 24px; border-radius: 4px; cursor: pointer; display: grid; place-items: center; transition: all 0.15s; flex-shrink: 0; }
-.qx:hover { background: #ef4444; color: #ffffff; }
-
-.ci-bottom { display: flex; align-items: center; justify-content: space-between; }
-.ci-ctrl { display: flex; align-items: center; background: rgba(0,0,0,0.15); border-radius: 6px; border: 1px solid rgba(255,255,255,0.04); }
-.qbtn { width: 30px; height: 30px; border-radius: 4px; border: none; background: transparent; color: #ffffff; font-size: 1.1rem; cursor: pointer; display: grid; place-items: center; }
-.qbtn:hover:not(:disabled) { background: rgba(255,255,255,0.06); color: var(--accent, #a3e635); }
-.qbtn:disabled { opacity: 0.15; cursor: not-allowed; }
-.qcant { min-width: 28px; text-align: center; font-weight: 600; font-size: 0.88rem; color: #ffffff; }
-.ci-sub { font-weight: 600; font-size: 0.9rem; color: #f8fafc; }
-
-.cart-footer { padding-top: 1rem; margin-top: 0.5rem; border-top: 1px solid rgba(255, 255, 255, 0.08); flex-shrink: 0; }
-.total-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.8rem; }
-.total-row span:first-child { color: rgba(255,255,255,0.4); font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
-.total-num { font-size: 1.4rem; font-weight: 700; color: var(--accent, #a3e635); letter-spacing: -0.01em; }
-.cobrar { font-size: 0.95rem; font-weight: 600; min-height: 46px; }
-
-/* Barra Flotante Inferior (Móvil Fijo Activo) */
-.cart-bar { 
-  display: flex; 
-  align-items: center; 
+.panel-cart.abierto {
+  transform: translateY(0);
+}
+.cart-head {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
-  position: fixed; 
-  left: 12px; right: 12px; bottom: 12px; 
-  z-index: 50;
-  background: var(--accent, #a3e635); 
-  color: #07090f; 
+  margin-bottom: 1rem;
+  flex-shrink: 0;
+}
+.cart-head h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.cerrar-cart {
+  background: rgba(255, 255, 255, 0.04);
+  border: none;
+  color: #ffffff;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
   cursor: pointer;
-  padding: 0.7rem 1.1rem; 
+  display: grid;
+  place-items: center;
+  transition: background 0.2s;
+}
+.cerrar-cart:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.cart-contenido {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.cart-items {
+  list-style: none;
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-height: 0;
+  padding: 0 0.2rem 0 0;
+  margin: 0;
+}
+.cart-item {
+  background: #151926;
+  border-radius: 6px;
+  padding: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.02);
+}
+
+.ci-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.ci-desc {
+  font-weight: 500;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: #e2e8f0;
+}
+.qx {
+  background: rgba(239, 68, 68, 0.08);
+  border: none;
+  color: #f87171;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.qx:hover {
+  background: #ef4444;
+  color: #ffffff;
+}
+
+.ci-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ci-ctrl {
+  display: flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+.qbtn {
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: #ffffff;
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.qbtn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--accent, #a3e635);
+}
+.qbtn:disabled {
+  opacity: 0.15;
+  cursor: not-allowed;
+}
+.qcant {
+  min-width: 28px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: #ffffff;
+}
+.ci-sub {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #f8fafc;
+}
+
+.cart-footer {
+  padding-top: 1rem;
+  margin-top: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+.total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.8rem;
+}
+.total-row span:first-child {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.total-num {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--accent, #a3e635);
+  letter-spacing: -0.01em;
+}
+.cobrar {
+  font-size: 0.95rem;
+  font-weight: 600;
+  min-height: 46px;
+}
+
+/* Barra Flotante Inferior */
+.cart-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 50;
+  background: var(--accent, #a3e635);
+  color: #07090f;
+  cursor: pointer;
+  padding: 0.7rem 1.1rem;
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(163, 230, 53, 0.25);
   transition: all 0.2s ease;
 }
-.cart-bar-oculto { transform: translateY(150%) !important; pointer-events: none; }
-.cb-info { display: flex; flex-direction: column; }
-.cb-count { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; opacity: 0.7; letter-spacing: 0.02em; }
-.cb-total { font-weight: 700; font-size: 1.1rem; letter-spacing: -0.01em; }
-.cb-ver { font-weight: 600; font-size: 0.85rem; }
+.cart-bar-oculto {
+  transform: translateY(150%) !important;
+  pointer-events: none;
+}
+.cb-info {
+  display: flex;
+  flex-direction: column;
+}
+.cb-count {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  opacity: 0.7;
+  letter-spacing: 0.02em;
+}
+.cb-total {
+  font-weight: 700;
+  font-size: 1.1rem;
+  letter-spacing: -0.01em;
+}
+.cb-ver {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
 
-.cart-overlay { position: fixed; inset: 0; background: rgba(5, 6, 11, 0.75); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); z-index: 54; }
+.cart-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 6, 11, 0.75);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  z-index: 54;
+}
 
 /* Modales */
 .modal-bg {
-  position: fixed; inset: 0; background: rgba(4, 5, 8, 0.8);
-  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
-  display: grid; place-items: center; z-index: 100; padding: 1rem;
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 5, 8, 0.8);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  z-index: 100;
+  padding: 1rem;
 }
 .modal {
-  background: #131622; border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 12px; padding: 1.5rem; width: 100%;
-  max-width: 390px; box-shadow: 0 20px 48px rgba(0,0,0,0.6);
+  background: #131622;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 1.5rem;
+  width: 100%;
+  max-width: 390px;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.6);
 }
-.modal-header { margin-bottom: 1.25rem; }
-.modal h3 { font-size: 1.15rem; font-weight: 600; color: #ffffff; margin: 0 0 0.25rem 0; }
-.modal-acciones { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.25rem; }
+.modal-header {
+  margin-bottom: 1.25rem;
+}
+.modal h3 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0 0 0.25rem 0;
+}
+.modal-acciones {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
 
 .monto-input {
-  width: 100%; background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px;
-  padding: 0.85rem; color: var(--accent, #a3e635); font-size: 1.6rem; font-weight: 700;
-  text-align: center; margin: 0.5rem 0; transition: border-color 0.15s;
+  width: 100%;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 0.85rem;
+  color: var(--accent, #a3e635);
+  font-size: 1.6rem;
+  font-weight: 700;
+  text-align: center;
+  margin: 0.5rem 0;
+  transition: border-color 0.15s;
 }
-.monto-input:focus { outline: none; border-color: var(--accent, #a3e635); }
+.monto-input:focus {
+  outline: none;
+  border-color: var(--accent, #a3e635);
+}
 
-.pago-sub { margin: 0 0 0.5rem 0; font-size: 0.78rem; text-transform: uppercase; font-weight: 600; letter-spacing: 0.04em; color: rgba(255,255,255,0.35); }
-.pago-opciones { display: flex; flex-direction: column; gap: 0.5rem; }
-.pago-op { width: 100%; font-size: 0.9rem; min-height: 44px; justify-content: flex-start; padding-left: 1.25rem; }
-.pago-op svg { color: rgba(255,255,255,0.6); }
+.pago-sub {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.35);
+}
+.pago-opciones {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.pago-op {
+  width: 100%;
+  font-size: 0.9rem;
+  min-height: 44px;
+  justify-content: flex-start;
+  padding-left: 1.25rem;
+}
+.pago-op svg {
+  color: rgba(255, 255, 255, 0.6);
+}
 
-.fiado-bloque { margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid rgba(255,255,255,0.06); }
-.select-cliente { width: 100%; background: #151926; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 0.7rem 0.85rem; color: #ffffff; font-size: 0.88rem; margin-bottom: 0.75rem; min-height: 42px; outline: none; }
-.cerrar-modal { margin-top: 0.75rem; border: none; color: rgba(255,255,255,0.35); }
-.cerrar-modal:hover { color: #ffffff; background: rgba(255,255,255,0.02); }
+.fiado-bloque {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.select-cliente {
+  width: 100%;
+  background: #151926;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 0.7rem 0.85rem;
+  color: #ffffff;
+  font-size: 0.88rem;
+  margin-bottom: 0.75rem;
+  min-height: 42px;
+  outline: none;
+}
+.cerrar-modal {
+  margin-top: 0.75rem;
+  border: none;
+  color: rgba(255, 255, 255, 0.35);
+}
+.cerrar-modal:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.02);
+}
 
 /* Transitions */
-.fade-enter-active, .fade-leave-active { transition: opacity 0.15s ease; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
 
-.modal-pop-enter-active, .modal-pop-leave-active { transition: all 0.2s ease-out; }
-.modal-pop-enter-from, .modal-pop-leave-to { opacity: 0; transform: scale(0.96); }
+.modal-pop-enter-active,
+.modal-pop-leave-active {
+  transition: all 0.2s ease-out;
+}
+.modal-pop-enter-from,
+.modal-pop-leave-to {
+  opacity: 0;
+  transform: scale(0.96);
+}
 
-.scale-enter-active, .scale-leave-active { transition: all 0.15s ease; }
-.scale-enter-from, .scale-leave-to { opacity: 0; transform: scale(0.9); }
+.scale-enter-active,
+.scale-leave-active {
+  transition: all 0.15s ease;
+}
+.scale-enter-from,
+.scale-leave-to {
+  opacity: 0;
+  transform: scale(0.9);
+}
 
-.animate-fade-in { animation: fadeIn 0.25s ease forwards; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: translateY(0); } }
+.animate-fade-in {
+  animation: fadeIn 0.25s ease forwards;
+}
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 
 /* Responsive Grid layouts */
 @media (min-width: 768px) {
-  .pos-body { 
-    display: grid; 
-    grid-template-columns: 1fr 340px; 
+  .pos-body {
+    display: grid;
+    grid-template-columns: 1fr 340px;
     grid-template-rows: 100%;
-    gap: 1rem; 
+    gap: 1rem;
   }
 
-  .acciones { flex-wrap: nowrap; }
-  .accion-btn { flex: initial; }
-  .grid-prod { grid-template-columns: repeat(auto-fill, minmax(135px, 1fr)); gap: 0.6rem; }
+  .acciones {
+    flex-wrap: nowrap;
+  }
+  .accion-btn {
+    flex: initial;
+  }
+  .grid-prod {
+    grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
+    gap: 0.6rem;
+  }
 
   .panel-cart {
     position: relative;
@@ -698,13 +1257,25 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
     border: 1px solid rgba(255, 255, 255, 0.06);
     padding: 1rem;
   }
-  .cerrar-cart { display: none; }
-  .cart-bar { display: none !important; }
-  .cart-overlay { display: none !important; }
+  .cerrar-cart {
+    display: none;
+  }
+  .cart-bar {
+    display: none !important;
+  }
+  .cart-overlay {
+    display: none !important;
+  }
 }
 
 @media (min-width: 1200px) {
-  .pos-body { grid-template-columns: 1fr 370px; gap: 1.25rem; }
-  .grid-prod { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.7rem; }
+  .pos-body {
+    grid-template-columns: 1fr 370px;
+    gap: 1.25rem;
+  }
+  .grid-prod {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 0.7rem;
+  }
 }
 </style>
