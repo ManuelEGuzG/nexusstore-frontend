@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/services/api'
 import EscanerCodigo from '@/components/EscanerCodigo.vue'
@@ -22,6 +22,9 @@ const cargando = ref(true)
 const busqueda = ref('')
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
+// Control de la pestaña activa: 'todos' o 'criticos'
+const pestanaActiva = ref<'todos' | 'criticos'>('todos')
+
 const mostrarForm = ref(false)
 const editando = ref<Producto | null>(null)
 
@@ -35,11 +38,33 @@ const fBarcode = ref('')
 const mostrarEscaner = ref(false)
 const modoEscaner = ref<'campo' | 'buscar'>('campo')
 
+// Alerta e inclusión en pestaña crítica si tiene 10 unidades o menos
+const productosCriticos = computed(() => {
+  return productos.value.filter((p) => p.stock_actual <= 10)
+})
+
+// Decidir qué lista mostrar según la pestaña activa
+const productosFiltrados = computed(() => {
+  if (pestanaActiva.value === 'criticos') {
+    return productosCriticos.value
+  }
+  return productos.value
+})
+
 function fmt(n: number) {
   return (
     '₡' +
     Number(n || 0).toLocaleString('es-CR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
   )
+}
+
+// Función para formatear el stock de forma inteligente
+function fmtStock(n: number): string {
+  const numero = Number(n || 0)
+  if (numero % 1 === 0) {
+    return numero.toFixed(0)
+  }
+  return parseFloat(numero.toFixed(2)).toString()
 }
 
 async function cargar() {
@@ -82,7 +107,7 @@ async function abrirModal(p?: Producto) {
     fNombre.value = p.nombre
     fPrecio.value = String(p.precio)
     fCosto.value = p.costo != null ? String(p.costo) : ''
-    fStock.value = String(p.stock_actual)
+    fStock.value = fmtStock(p.stock_actual)
     fBarcode.value = p.barcode || ''
   } else {
     resetForm()
@@ -102,10 +127,11 @@ function cerrarModal() {
 async function guardar() {
   if (!fNombre.value.trim() || !fPrecio.value) return
 
+  const nuevoStock = fStock.value !== '' ? parseFloat(fStock.value) : 0
+
   const payload: any = {
     nombre: fNombre.value.trim(),
     precio: parseFloat(fPrecio.value) || 0,
-    stock_actual: parseFloat(fStock.value) || 0,
     barcode: fBarcode.value.trim() || null,
   }
 
@@ -114,10 +140,24 @@ async function guardar() {
 
   try {
     if (editando.value) {
-      await api.put(`/products/${editando.value.id}`, payload)
+      const peticiones = [api.put(`/products/${editando.value.id}`, payload)]
+
+      if (nuevoStock !== editando.value.stock_actual) {
+        peticiones.push(
+          api.post(`/products/${editando.value.id}/ajustar-stock`, {
+            tipo: 'ajuste',
+            cantidad: nuevoStock,
+            referencia: 'Corrección desde catálogo de artículos',
+          }),
+        )
+      }
+
+      await Promise.all(peticiones)
     } else {
+      payload.stock_actual = nuevoStock
       await api.post('/products', payload)
     }
+
     cerrarModal()
     await cargar()
   } catch {
@@ -229,6 +269,33 @@ async function onCodigoLeido(codigo: string) {
       </div>
     </header>
 
+    <div class="tabs-container">
+      <button
+        type="button"
+        class="tab-btn"
+        :class="{ active: pestanaActiva === 'todos' }"
+        @click="pestanaActiva = 'todos'"
+      >
+        Todos los artículos
+        <span class="tab-badge count-normal">{{ productos.length }}</span>
+      </button>
+
+      <button
+        type="button"
+        class="tab-btn"
+        :class="{
+          active: pestanaActiva === 'criticos',
+          'has-criticos': productosCriticos.length > 0,
+        }"
+        @click="pestanaActiva = 'criticos'"
+      >
+        Stock Bajo
+        <span v-if="productosCriticos.length" class="tab-badge count-critico">
+          {{ productosCriticos.length }}
+        </span>
+      </button>
+    </div>
+
     <div class="search-container">
       <div class="search-wrapper">
         <svg
@@ -262,7 +329,7 @@ async function onCodigoLeido(codigo: string) {
       <p class="text-pulse">Sincronizando maestro de inventario…</p>
     </div>
 
-    <div class="vacio card animate-fade-in" v-else-if="!productos.length" role="status">
+    <div class="vacio card animate-fade-in" v-else-if="!productosFiltrados.length" role="status">
       <svg
         class="vacio-icono"
         xmlns="http://www.w3.org/2000/svg"
@@ -281,15 +348,19 @@ async function onCodigoLeido(codigo: string) {
         <polygon points="12 12 21 6.92 21 17.08 12 22.08 12 12"></polygon>
         <polygon points="12 12 3 6.92 12 1.84 21 6.92 12 12"></polygon>
       </svg>
-      <p class="v-title">Catálogo no disponible</p>
+      <p class="v-title">Sin registros</p>
       <p class="dim">
-        Ningún artículo coincide con los criterios de búsqueda o el inventario está vacío.
+        {{
+          pestanaActiva === 'criticos'
+            ? '¡Excelente! No hay ningún artículo con stock bajo.'
+            : 'Ningún artículo coincide con los criterios de búsqueda o el catálogo está vacío.'
+        }}
       </p>
     </div>
 
     <ul class="lista-productos" v-else role="list">
       <li
-        v-for="p in productos"
+        v-for="p in productosFiltrados"
         :key="p.id"
         class="card item-prod"
         tabindex="0"
@@ -302,9 +373,11 @@ async function onCodigoLeido(codigo: string) {
           <div class="p-meta">
             <span class="meta-tag precio-tag">{{ fmt(p.precio) }}</span>
             <span class="meta-tag costo-tag" v-if="p.costo">Costo: {{ fmt(p.costo) }}</span>
-            <span class="meta-tag stock-tag" :class="{ 'low-stock': p.stock_actual <= 0 }">
-              {{ p.stock_actual <= 0 ? 'Sin stock' : `${p.stock_actual} u.` }}
+
+            <span class="meta-tag stock-tag" :class="{ 'low-stock': p.stock_actual <= 10 }">
+              {{ p.stock_actual <= 0 ? 'Sin stock' : `${fmtStock(p.stock_actual)} u.` }}
             </span>
+
             <span class="meta-tag barcode-tag muted" v-if="p.barcode">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -417,7 +490,7 @@ async function onCodigoLeido(codigo: string) {
             <p class="margen-hint ok-text" v-if="margenForm()" role="status">{{ margenForm() }}</p>
 
             <div class="field">
-              <label for="f-stock">Existencia Inicial</label>
+              <label for="f-stock">Existencia Actual</label>
               <input
                 id="f-stock"
                 v-model="fStock"
@@ -576,6 +649,71 @@ async function onCodigoLeido(codigo: string) {
   color: #ffffff;
 }
 
+/* SISTEMA DE PESTAÑAS (TABS) EXCLUSIVO */
+.tabs-container {
+  display: flex;
+  gap: 0.3rem;
+  background: #05060a;
+  padding: 0.25rem;
+  border-radius: 8px;
+  margin-bottom: 1.2rem;
+  border: 1px solid rgba(255, 255, 255, 0.03);
+}
+.tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: transparent;
+  border: none;
+  color: #64748b;
+  padding: 0.6rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.tab-btn:hover {
+  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.02);
+}
+.tab-btn.active {
+  background: #090b11;
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+}
+.tab-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 10px;
+}
+.count-normal {
+  background: rgba(255, 255, 255, 0.05);
+  color: #94a3b8;
+}
+.tab-btn.active .count-normal {
+  background: rgba(180, 254, 47, 0.1);
+  color: #b4fe2f;
+}
+.count-critico {
+  background: #ef4444;
+  color: #ffffff;
+  animation: pulseScale 2s infinite;
+}
+@keyframes pulseScale {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
 /* Contenedor de Búsqueda */
 .search-container {
   margin-bottom: 1.2rem;
@@ -653,7 +791,7 @@ async function onCodigoLeido(codigo: string) {
   font-size: 0.8rem;
   line-height: 1.4;
   margin: 0;
-  max-width: 300px;
+  max-width: 320px;
 }
 
 /* Listado de Productos */
@@ -795,7 +933,7 @@ async function onCodigoLeido(codigo: string) {
   font-weight: 600;
 }
 .ok-text {
-  color: #4ade80; /* Tono verde para margen contable positivo */
+  color: #4ade80;
 }
 
 .barcode-row {
@@ -882,7 +1020,19 @@ async function onCodigoLeido(codigo: string) {
   }
 }
 
-/* ====================== RESPONSIVIDAD MÓVIL CRÍTICA ====================== */
+/* Scrollbars */
+.criticos-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.criticos-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.criticos-scroll::-webkit-scrollbar-thumb {
+  background: rgba(239, 68, 68, 0.2);
+  border-radius: 2px;
+}
+
+/* ====================== RESPONSIVIDAD MÓVIL ====================== */
 @media (max-width: 480px) {
   .lbl-btn {
     display: none;
@@ -974,17 +1124,5 @@ async function onCodigoLeido(codigo: string) {
     gap: 0.75rem;
     margin-top: 1.5rem;
   }
-}
-
-/* Scrollbar Customization */
-.hist-wrapper::-webkit-scrollbar {
-  width: 4px;
-}
-.hist-wrapper::-webkit-scrollbar-track {
-  background: transparent;
-}
-.hist-wrapper::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 2px;
 }
 </style>
