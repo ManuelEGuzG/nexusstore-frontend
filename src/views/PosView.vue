@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, nextTick } from 'vue'
+import { ref, onMounted, computed, nextTick, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/services/api'
 import { usePosStore } from '@/stores/pos'
@@ -15,6 +15,13 @@ interface Producto {
   precio: number
 }
 
+interface Cliente {
+  id: number
+  nombre: string
+  saldo: number
+}
+
+// Estados reactivos
 const productos = ref<Producto[]>([])
 const busqueda = ref('')
 const enLinea = ref(navigator.onLine)
@@ -28,31 +35,54 @@ const carritoAbierto = ref(false)
 const mostrarEscaner = ref(false)
 const escanerRef = ref<any>(null)
 
-const clientes = ref<{ id: number; nombre: string; saldo: number }[]>([])
+const clientes = ref<Cliente[]>([])
 const clienteSeleccionado = ref<number | null>(null)
+const procesando = ref(false)
 
 const inputMontoRef = ref<HTMLInputElement | null>(null)
 
+// Computed para filtrar catálogo localmente
 const productosFiltrados = computed(() => {
   if (!busqueda.value) return productos.value
   const q = busqueda.value.toLowerCase()
   return productos.value.filter((p) => p.nombre.toLowerCase().includes(q))
 })
 
+// Cuenta total de unidades en el carrito
 const totalItems = computed(() => pos.items.reduce((s, it) => s + it.cantidad, 0))
 
+// Manejadores de red para actualizar el estado del chip
+const actualizarEstadoRed = async (estado: boolean) => {
+  enLinea.value = estado
+  if (estado) {
+    await pos.refrescarPendientes()
+  }
+}
+
+const handleOnline = () => actualizarEstadoRed(true)
+const handleOffline = () => actualizarEstadoRed(false)
+
 onMounted(async () => {
+  // Cargar cola local inicial si existiera
   await pos.refrescarPendientes()
-  window.addEventListener('online', () => (enLinea.value = true))
-  window.addEventListener('offline', () => (enLinea.value = false))
+
+  window.addEventListener('online', handleOnline)
+  window.addEventListener('offline', handleOffline)
+
   try {
     const { data } = await api.get('/products')
     productos.value = data
-  } catch {
-    /* Venta por monto libre disponible */
+  } catch (error) {
+    console.warn('Catálogo local no disponible. Venta por monto libre activa.')
   }
 })
 
+onUnmounted(() => {
+  window.removeEventListener('online', handleOnline)
+  window.removeEventListener('offline', handleOffline)
+})
+
+// Formateador de moneda (Colones costarricenses)
 function fmt(n: number) {
   return (
     '₡' + Number(n).toLocaleString('es-CR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
@@ -85,16 +115,23 @@ async function onCodigoLeido(codigo: string) {
         precio: Number(data.producto.precio),
       })
       escanerRef.value?.avisar(`+ ${data.producto.nombre}`, true)
+    } else {
+      escanerRef.value?.avisar('Producto no registrado', false)
     }
   } catch (e: any) {
-    if (e.response?.status === 404) escanerRef.value?.avisar('Producto no registrado', false)
-    else escanerRef.value?.avisar('Sin conexión', false)
+    if (e.response?.status === 404) {
+      escanerRef.value?.avisar('Producto no registrado', false)
+    } else {
+      escanerRef.value?.avisar('Sin conexión', false)
+    }
   }
 }
 
 function ajustarCantidadEscaner(productId: number, delta: number) {
   const idx = pos.items.findIndex((it) => it.product_id === productId)
-  if (idx !== -1) pos.cambiarCantidad(idx, pos.items[idx].cantidad + delta)
+  if (idx !== -1) {
+    pos.cambiarCantidad(idx, pos.items[idx].cantidad + delta)
+  }
 }
 
 async function abrirPago() {
@@ -108,7 +145,6 @@ async function abrirPago() {
   mostrarPago.value = true
 }
 
-const procesando = ref(false)
 async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   if (tipo === 'fiado' && !clienteSeleccionado.value) return
   procesando.value = true
@@ -121,6 +157,8 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
     clienteSeleccionado.value = null
     carritoAbierto.value = false
     mostrarTiquete.value = true
+  } catch (error) {
+    console.error('Error al procesar el cobro:', error)
   } finally {
     procesando.value = false
   }
@@ -129,6 +167,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 
 <template>
   <div class="pos">
+    <!-- Header de Control y Estado de Red -->
     <header class="pos-top">
       <button class="back" @click="router.push('/')" aria-label="Volver">
         <svg
@@ -158,7 +197,9 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
       </div>
     </header>
 
+    <!-- Cuerpo del Módulo -->
     <div class="pos-body">
+      <!-- Sección Izquierda: Catálogo y Filtros -->
       <section class="panel-prod">
         <div class="acciones">
           <div class="buscar-contenedor">
@@ -222,6 +263,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
           </button>
         </div>
 
+        <!-- Grid de Catálogo -->
         <div v-if="productosFiltrados.length" class="grid-prod">
           <button
             v-for="p in productosFiltrados"
@@ -233,6 +275,8 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
             <span class="prod-precio">{{ fmt(p.precio) }}</span>
           </button>
         </div>
+
+        <!-- Estado Vacío -->
         <div v-else class="vacio-prod card animate-fade-in">
           <svg
             class="vacio-icono"
@@ -258,6 +302,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
         </div>
       </section>
 
+      <!-- Sección Derecha: Carrito Lateral (Desktop) / Panel Desplegable (Mobile) -->
       <section class="panel-cart card" :class="{ abierto: carritoAbierto }">
         <div class="cart-head">
           <h2>Venta Actual</h2>
@@ -279,6 +324,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
           </button>
         </div>
 
+        <!-- Carrito Vacío -->
         <div v-if="pos.vacio" class="cart-vacio">
           <svg
             class="vacio-cart-icono"
@@ -300,6 +346,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
           <p class="dim">Seleccioná ítems del catálogo o utilizá el escáner de códigos.</p>
         </div>
 
+        <!-- Lista del Carrito -->
         <div v-else class="cart-contenido">
           <ul class="cart-items">
             <li v-for="(it, i) in pos.items" :key="i" class="cart-item">
@@ -334,9 +381,9 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
                   <span class="qcant">{{ it.cantidad }}</span>
                   <button class="qbtn" @click="pos.cambiarCantidad(i, it.cantidad + 1)">+</button>
                 </div>
-                <span class="ci-sub">{{
-                  fmt(it.cantidad * it.precio_unitario - it.descuento)
-                }}</span>
+                <span class="ci-sub">
+                  {{ fmt(it.cantidad * it.precio_unitario - it.descuento) }}
+                </span>
               </div>
             </li>
           </ul>
@@ -358,6 +405,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
       </section>
     </div>
 
+    <!-- Barra de Estado Inferior Flotante (Solo Mobile) -->
     <div
       v-if="!pos.vacio"
       class="cart-bar"
@@ -365,18 +413,20 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
       @click="carritoAbierto = true"
     >
       <div class="cb-info">
-        <span class="cb-count"
-          >{{ totalItems }} {{ totalItems === 1 ? 'ítem' : 'ítems' }} en cuenta</span
-        >
+        <span class="cb-count">
+          {{ totalItems }} {{ totalItems === 1 ? 'ítem' : 'ítems' }} en cuenta
+        </span>
         <span class="cb-total">{{ fmt(pos.total) }}</span>
       </div>
       <span class="cb-ver">Ver detalle ›</span>
     </div>
 
+    <!-- Cortina oscura de Carrito en Mobile -->
     <Transition name="fade">
       <div v-if="carritoAbierto" class="cart-overlay" @click="carritoAbierto = false"></div>
     </Transition>
 
+    <!-- Modal: Agregar Monto Libre -->
     <Transition name="modal-pop">
       <div v-if="mostrarMontoLibre" class="modal-bg" @click.self="mostrarMontoLibre = false">
         <div class="modal">
@@ -407,6 +457,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
       </div>
     </Transition>
 
+    <!-- Modal: Pasarela Interna de Cobro -->
     <Transition name="modal-pop">
       <div v-if="mostrarPago" class="modal-bg" @click.self="mostrarPago = false">
         <div class="modal">
@@ -416,7 +467,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
           </div>
           <div class="pago-opciones">
             <button
-              class="btn btn-primary pago-op"
+              class="btn btn-secondary pago-op"
               :disabled="procesando"
               @click="cobrar('efectivo')"
             >
@@ -459,6 +510,8 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
               SINPE Móvil / Tarjeta
             </button>
           </div>
+
+          <!-- Liquidación a Cuenta Corriente (Fiado) -->
           <div class="fiado-bloque">
             <p class="dim pago-sub">Cargar Cuenta Corriente (Crédito):</p>
             <select v-model="clienteSeleccionado" class="select-cliente">
@@ -497,6 +550,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
       </div>
     </Transition>
 
+    <!-- Componentes Adicionales Incrustados -->
     <ComprobanteTiquete
       v-if="mostrarTiquete && pos.ultimaVenta"
       :uuid="pos.ultimaVenta.uuid"
@@ -520,7 +574,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 
 <style scoped>
 /* ==========================================================================
-   SISTEMA DE DISEÑO INTERNAZIONAL / ENTERPRISE DARK
+   SISTEMA DE DISEÑO / NEXUSSTORE CORPORATE ULTRADARK COLOR PALETTE
    ========================================================================== */
 .pos {
   height: 100vh;
@@ -528,17 +582,21 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background-color: var(--bg, #0e1014);
+  background-color: #05060b; /* Fondo negro puro de NexusStore */
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
 }
 
-/* Header Principal */
+/* Header de Control y Estado de Red */
 .pos-top {
   display: flex;
   align-items: center;
   gap: 1rem;
   padding: 0.75rem clamp(1rem, 3vw, 1.5rem);
-  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.06));
-  background: var(--bg-header, #121522);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  background: #080a10; /* Superficie oscura sutil */
   flex-shrink: 0;
 }
 
@@ -546,19 +604,19 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   width: 40px;
   height: 40px;
   flex-shrink: 0;
-  border-radius: var(--radius-sm, 8px);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
   background: rgba(255, 255, 255, 0.02);
-  color: var(--text, #e2e8f0);
+  color: #cbd5e1;
   cursor: pointer;
   display: inline-grid;
   place-items: center;
   transition: all 0.2s ease;
 }
 .back:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: var(--accent, #a3e635);
-  color: var(--accent, #a3e635);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: #b4fe2f; /* Verde Lima */
+  color: #b4fe2f;
 }
 
 .pos-title {
@@ -587,15 +645,16 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   border: 1px solid transparent;
 }
 .chip.on {
-  background: rgba(34, 197, 94, 0.08);
-  color: #4ade80;
-  border-color: rgba(34, 197, 94, 0.15);
+  background: rgba(180, 254, 47, 0.05);
+  color: #b4fe2f;
+  border-color: rgba(180, 254, 47, 0.1);
 }
 .chip.on .indicator {
   width: 6px;
   height: 6px;
-  background: #4ade80;
+  background: #b4fe2f;
   border-radius: 50%;
+  box-shadow: 0 0 8px rgba(180, 254, 47, 0.6);
 }
 .chip.off {
   background: rgba(239, 68, 68, 0.08);
@@ -612,7 +671,6 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   background: rgba(234, 179, 8, 0.1);
   color: #fde047;
   border-color: rgba(234, 179, 8, 0.2);
-  border-radius: 4px;
 }
 
 /* Layout del cuerpo */
@@ -655,7 +713,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   left: 12px;
   top: 50%;
   transform: translateY(-50%);
-  color: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.2);
   pointer-events: none;
   display: block;
   z-index: 2;
@@ -663,8 +721,8 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 .buscar {
   width: 100%;
   display: block;
-  background: #141824;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #0b0d16;
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 8px;
   padding: 0.65rem 0.9rem 0.65rem 2.4rem;
   color: #ffffff;
@@ -684,11 +742,10 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 
 .buscar:focus {
   outline: none;
-  border-color: var(--accent, #a3e635);
-  box-shadow: 0 0 0 3px rgba(163, 230, 53, 0.12);
+  border-color: #b4fe2f;
 }
 .buscar-contenedor:focus-within .buscar-icono {
-  color: var(--accent, #a3e635);
+  color: #b4fe2f;
 }
 
 /* Botones Base */
@@ -708,43 +765,47 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   transition: all 0.15s ease;
 }
 .btn-primary {
-  background: var(--accent, #a3e635);
+  background: #b4fe2f;
   color: #000000;
 }
 .btn-primary:hover:not(:disabled) {
-  background: #bef264;
+  background: #c2ff55;
+  box-shadow: 0 0 20px rgba(180, 254, 47, 0.25);
 }
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.02);
   color: #ffffff;
-  border-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.05);
 }
 .btn-secondary:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
 .btn-ghost {
   background: transparent;
-  color: #cbd5e1;
-  border-color: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.4);
+  border-color: rgba(255, 255, 255, 0.05);
 }
 .btn-ghost:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.02);
   border-color: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
 }
 .btn-warn {
-  background: rgba(234, 179, 8, 0.08);
-  color: #fde047;
-  border-color: rgba(234, 179, 8, 0.2);
+  background: rgba(239, 68, 68, 0.05);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.1);
 }
 .btn-warn:hover:not(:disabled) {
-  background: rgba(234, 179, 8, 0.15);
+  background: #ef4444;
+  color: #ffffff;
 }
 .btn-block {
   width: 100%;
 }
 .btn:disabled {
-  opacity: 0.35;
+  opacity: 0.25;
   cursor: not-allowed;
 }
 
@@ -768,8 +829,8 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 
 /* Tarjeta de Producto */
 .prod-btn {
-  background: #111422;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: #090b11;
+  border: 1px solid rgba(255, 255, 255, 0.04);
   border-radius: 8px;
   padding: 0.9rem;
   cursor: pointer;
@@ -783,8 +844,8 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   transition: all 0.15s ease;
 }
 .prod-btn:hover {
-  border-color: var(--accent, #a3e635);
-  background: #15192b;
+  border-color: rgba(255, 255, 255, 0.15);
+  background: #0e111a;
 }
 .prod-btn:active {
   transform: scale(0.98);
@@ -794,14 +855,14 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   font-weight: 500;
   font-size: 0.85rem;
   line-height: 1.3;
-  color: #f1f5f9;
+  color: #cbd5e1;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 .prod-precio {
-  color: var(--accent, #a3e635);
+  color: #ffffff;
   font-weight: 700;
   font-size: 1rem;
   letter-spacing: -0.01em;
@@ -816,13 +877,13 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.01);
-  border: 1px dashed rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.005);
+  border: 1px dashed rgba(255, 255, 255, 0.04);
   border-radius: 8px;
 }
 .vacio-icono,
 .vacio-cart-icono {
-  color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.1);
   margin-bottom: 1rem;
 }
 .vp-title,
@@ -833,7 +894,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   color: #ffffff;
 }
 .dim {
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.3);
   font-size: 0.82rem;
   line-height: 1.4;
   margin: 0;
@@ -854,9 +915,9 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   border-radius: 12px 12px 0 0;
   transform: translateY(110%);
   transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.5);
-  background: #111422;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.6);
+  background: #080a10;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
   padding: 1.25rem;
 }
 .panel-cart.abierto {
@@ -878,7 +939,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   letter-spacing: 0.03em;
 }
 .cerrar-cart {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.03);
   border: none;
   color: #ffffff;
   width: 32px;
@@ -890,7 +951,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   transition: background 0.2s;
 }
 .cerrar-cart:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .cart-contenido {
@@ -911,7 +972,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   margin: 0;
 }
 .cart-item {
-  background: #151926;
+  background: #0c0e16;
   border-radius: 6px;
   padding: 0.75rem;
   border: 1px solid rgba(255, 255, 255, 0.02);
@@ -931,9 +992,9 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   color: #e2e8f0;
 }
 .qx {
-  background: rgba(239, 68, 68, 0.08);
+  background: rgba(255, 255, 255, 0.02);
   border: none;
-  color: #f87171;
+  color: rgba(255, 255, 255, 0.3);
   width: 24px;
   height: 24px;
   border-radius: 4px;
@@ -944,8 +1005,8 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   flex-shrink: 0;
 }
 .qx:hover {
-  background: #ef4444;
-  color: #ffffff;
+  background: rgba(239, 68, 68, 0.1);
+  color: #f87171;
 }
 
 .ci-bottom {
@@ -956,9 +1017,9 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 .ci-ctrl {
   display: flex;
   align-items: center;
-  background: rgba(0, 0, 0, 0.15);
+  background: rgba(0, 0, 0, 0.2);
   border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.03);
 }
 .qbtn {
   width: 30px;
@@ -973,8 +1034,8 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   place-items: center;
 }
 .qbtn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--accent, #a3e635);
+  background: rgba(255, 255, 255, 0.03);
+  color: #b4fe2f;
 }
 .qbtn:disabled {
   opacity: 0.15;
@@ -990,13 +1051,13 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 .ci-sub {
   font-weight: 600;
   font-size: 0.9rem;
-  color: #f8fafc;
+  color: #ffffff;
 }
 
 .cart-footer {
   padding-top: 1rem;
   margin-top: 0.5rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
   flex-shrink: 0;
 }
 .total-row {
@@ -1006,7 +1067,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   margin-bottom: 0.8rem;
 }
 .total-row span:first-child {
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.3);
   font-size: 0.8rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -1015,7 +1076,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 .total-num {
   font-size: 1.4rem;
   font-weight: 700;
-  color: var(--accent, #a3e635);
+  color: #b4fe2f;
   letter-spacing: -0.01em;
 }
 .cobrar {
@@ -1034,12 +1095,12 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   right: 12px;
   bottom: 12px;
   z-index: 50;
-  background: var(--accent, #a3e635);
-  color: #07090f;
+  background: #b4fe2f;
+  color: #000000;
   cursor: pointer;
   padding: 0.7rem 1.1rem;
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(163, 230, 53, 0.25);
+  box-shadow: 0 8px 24px rgba(180, 254, 47, 0.2);
   transition: all 0.2s ease;
 }
 .cart-bar-oculto {
@@ -1054,7 +1115,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   font-size: 0.72rem;
   font-weight: 600;
   text-transform: uppercase;
-  opacity: 0.7;
+  opacity: 0.6;
   letter-spacing: 0.02em;
 }
 .cb-total {
@@ -1070,9 +1131,9 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 .cart-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(5, 6, 11, 0.75);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
+  background: rgba(4, 5, 9, 0.8);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   z-index: 54;
 }
 
@@ -1080,22 +1141,22 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 .modal-bg {
   position: fixed;
   inset: 0;
-  background: rgba(4, 5, 8, 0.8);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: rgba(4, 5, 9, 0.85);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
   display: grid;
   place-items: center;
   z-index: 100;
   padding: 1rem;
 }
 .modal {
-  background: #131622;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #080a10;
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 12px;
   padding: 1.5rem;
   width: 100%;
   max-width: 390px;
-  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.7);
 }
 .modal-header {
   margin-bottom: 1.25rem;
@@ -1115,11 +1176,11 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 
 .monto-input {
   width: 100%;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 6px;
   padding: 0.85rem;
-  color: var(--accent, #a3e635);
+  color: #b4fe2f;
   font-size: 1.6rem;
   font-weight: 700;
   text-align: center;
@@ -1128,7 +1189,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 }
 .monto-input:focus {
   outline: none;
-  border-color: var(--accent, #a3e635);
+  border-color: #b4fe2f;
 }
 
 .pago-sub {
@@ -1137,7 +1198,7 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   text-transform: uppercase;
   font-weight: 600;
   letter-spacing: 0.04em;
-  color: rgba(255, 255, 255, 0.35);
+  color: rgba(255, 255, 255, 0.3);
 }
 .pago-opciones {
   display: flex;
@@ -1158,12 +1219,12 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 .fiado-bloque {
   margin-top: 1.25rem;
   padding-top: 1.25rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
 }
 .select-cliente {
   width: 100%;
-  background: #151926;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #0c0e16;
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 6px;
   padding: 0.7rem 0.85rem;
   color: #ffffff;
@@ -1175,14 +1236,14 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
 .cerrar-modal {
   margin-top: 0.75rem;
   border: none;
-  color: rgba(255, 255, 255, 0.35);
+  color: rgba(255, 255, 255, 0.3);
 }
 .cerrar-modal:hover {
   color: #ffffff;
   background: rgba(255, 255, 255, 0.02);
 }
 
-/* Transitions */
+/* Transitions de Vue */
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.15s ease;
@@ -1226,7 +1287,9 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
   }
 }
 
-/* Responsive Grid layouts */
+/* ==========================================================================
+   RESPONSIVE LAYOUT (ADAPTACIÓN DE PANELES EN ESCRITORIO)
+   ========================================================================== */
 @media (min-width: 768px) {
   .pos-body {
     display: grid;
@@ -1253,9 +1316,10 @@ async function cobrar(tipo: 'efectivo' | 'fiado' | 'manual') {
     box-shadow: none;
     border-radius: 8px;
     z-index: 1;
-    background: #111422;
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: #080a10;
+    border: 1px solid rgba(255, 255, 255, 0.04);
     padding: 1rem;
+    inset: auto;
   }
   .cerrar-cart {
     display: none;

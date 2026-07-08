@@ -258,11 +258,11 @@ async function onCodigoLeido(codigo: string) {
       </div>
     </div>
 
-    <div v-if="cargando" class="state-msg" aria-live="polite">
+    <div class="state-msg" v-if="cargando" aria-live="polite">
       <p class="text-pulse">Sincronizando maestro de inventario…</p>
     </div>
 
-    <div v-else-if="!productos.length" class="vacio card animate-fade-in" role="status">
+    <div class="vacio card animate-fade-in" v-else-if="!productos.length" role="status">
       <svg
         class="vacio-icono"
         xmlns="http://www.w3.org/2000/svg"
@@ -287,7 +287,7 @@ async function onCodigoLeido(codigo: string) {
       </p>
     </div>
 
-    <ul v-else class="lista-productos" role="list">
+    <ul class="lista-productos" v-else role="list">
       <li
         v-for="p in productos"
         :key="p.id"
@@ -301,11 +301,11 @@ async function onCodigoLeido(codigo: string) {
           <span class="p-nombre">{{ p.nombre }}</span>
           <div class="p-meta">
             <span class="meta-tag precio-tag">{{ fmt(p.precio) }}</span>
-            <span v-if="p.costo" class="meta-tag costo-tag">Costo: {{ fmt(p.costo) }}</span>
+            <span class="meta-tag costo-tag" v-if="p.costo">Costo: {{ fmt(p.costo) }}</span>
             <span class="meta-tag stock-tag" :class="{ 'low-stock': p.stock_actual <= 0 }">
               {{ p.stock_actual <= 0 ? 'Sin stock' : `${p.stock_actual} u.` }}
             </span>
-            <span v-if="p.barcode" class="meta-tag barcode-tag muted">
+            <span class="meta-tag barcode-tag muted" v-if="p.barcode">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="10"
@@ -414,7 +414,7 @@ async function onCodigoLeido(codigo: string) {
               </div>
             </div>
 
-            <p v-if="margenForm()" class="margen-hint ok-text" role="status">{{ margenForm() }}</p>
+            <p class="margen-hint ok-text" v-if="margenForm()" role="status">{{ margenForm() }}</p>
 
             <div class="field">
               <label for="f-stock">Existencia Inicial</label>
@@ -491,7 +491,7 @@ async function onCodigoLeido(codigo: string) {
   overflow-x: hidden;
 }
 
-/* Cabecera Estructurada para Evitar Desbordes */
+/* Cabecera Estructurada */
 .page-head {
   display: flex;
   align-items: center;
@@ -530,6 +530,11 @@ async function onCodigoLeido(codigo: string) {
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
+  transition: all 0.2s;
+}
+.back:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
 }
 
 .head-acciones {
@@ -547,19 +552,31 @@ async function onCodigoLeido(codigo: string) {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-.btn-primary {
-  background: var(--accent, #a3e635);
-  color: #000000;
-  border: none;
-}
-.btn-ghost {
-  background: rgba(255, 255, 255, 0.03);
-  color: #cbd5e1;
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-/* Búsqueda */
+.btn-primary {
+  background: #b4fe2f;
+  color: #000000;
+  border: none;
+  transition: background 0.2s;
+}
+.btn-primary:hover {
+  background: #c2ff55;
+}
+
+.btn-ghost {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: #cbd5e1;
+  transition: all 0.2s;
+}
+.btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+}
+
+/* Contenedor de Búsqueda */
 .search-container {
   margin-bottom: 1.2rem;
 }
@@ -576,23 +593,24 @@ async function onCodigoLeido(codigo: string) {
 }
 .inp {
   width: 100%;
-  background: var(--bg-card, #111422);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.06));
+  background: #090b11;
+  border: 1px solid rgba(255, 255, 255, 0.04);
   border-radius: 8px;
   padding: 0.65rem 0.8rem;
   color: #ffffff;
   font-size: 0.88rem;
   box-sizing: border-box;
+  transition: border-color 0.2s;
 }
 .search-inp {
   padding-left: 2.3rem;
 }
 .inp:focus {
   outline: none;
-  border-color: var(--accent, #a3e635);
+  border-color: #b4fe2f;
 }
 
-/* Estados */
+/* Estados de Carga y Vacío */
 .state-msg {
   text-align: center;
   padding: 2rem 0;
@@ -616,12 +634,12 @@ async function onCodigoLeido(codigo: string) {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.01);
+  background: #080a10;
   border: 1px dashed rgba(255, 255, 255, 0.06);
   border-radius: 8px;
 }
 .vacio-icono {
-  color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.15);
   margin-bottom: 0.75rem;
 }
 .v-title {
@@ -631,14 +649,14 @@ async function onCodigoLeido(codigo: string) {
   color: #ffffff;
 }
 .dim {
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.35);
   font-size: 0.8rem;
   line-height: 1.4;
   margin: 0;
   max-width: 300px;
 }
 
-/* Listado de Productos Seguro contra Desbordamientos */
+/* Listado de Productos */
 .lista-productos {
   list-style: none;
   padding: 0;
@@ -648,8 +666,8 @@ async function onCodigoLeido(codigo: string) {
   gap: 0.4rem;
 }
 .card {
-  background: var(--bg-card, #111422);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.06));
+  background: #090b11;
+  border: 1px solid rgba(255, 255, 255, 0.04);
   border-radius: 8px;
 }
 
@@ -661,12 +679,13 @@ async function onCodigoLeido(codigo: string) {
   gap: 0.75rem;
   outline: none;
   cursor: pointer;
-  min-width: 0; /* Evita heredar anchos rígidos */
+  min-width: 0;
+  transition: all 0.2s ease;
 }
 .item-prod:hover,
 .item-prod:focus-visible {
-  border-color: rgba(163, 230, 53, 0.2);
-  background: linear-gradient(to right, #111422, var(--bg-hover, #15192b));
+  border-color: rgba(180, 254, 47, 0.2);
+  background: #0d101a;
 }
 
 .p-info {
@@ -692,35 +711,36 @@ async function onCodigoLeido(codigo: string) {
 }
 .meta-tag {
   font-size: 0.75rem;
-  color: #94a3b8;
+  color: #64748b;
   white-space: nowrap;
 }
 .precio-tag {
-  color: var(--accent, #a3e635);
+  color: #b4fe2f;
   font-weight: 700;
   font-size: 0.85rem;
 }
 .costo-tag {
-  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
   padding-left: 0.5rem;
 }
 .stock-tag {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.02);
   padding: 0.1rem 0.4rem;
   border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.04);
   font-weight: 500;
+  color: #cbd5e1;
 }
 .low-stock {
   color: #f87171;
-  background: rgba(239, 68, 68, 0.08);
-  border-color: rgba(239, 68, 68, 0.15);
+  background: rgba(239, 68, 68, 0.05);
+  border-color: rgba(239, 68, 68, 0.12);
 }
 
 .btn-del {
   background: transparent;
   border: none;
-  color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.15);
   cursor: pointer;
   width: 36px;
   height: 36px;
@@ -735,7 +755,7 @@ async function onCodigoLeido(codigo: string) {
   background: rgba(239, 68, 68, 0.08);
 }
 
-/* Formulario */
+/* Formularios del Modal */
 .field {
   display: flex;
   flex-direction: column;
@@ -750,17 +770,18 @@ async function onCodigoLeido(codigo: string) {
   letter-spacing: 0.04em;
 }
 .field input {
-  background: rgba(0, 0, 0, 0.15);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.06));
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 6px;
   padding: 0.6rem 0.75rem;
   color: #ffffff;
   font-size: 0.88rem;
   min-width: 0;
+  transition: border-color 0.2s;
 }
 .field input:focus {
   outline: none;
-  border-color: var(--accent, #a3e635);
+  border-color: #b4fe2f;
 }
 
 .form-row {
@@ -774,7 +795,7 @@ async function onCodigoLeido(codigo: string) {
   font-weight: 600;
 }
 .ok-text {
-  color: var(--accent, #a3e635);
+  color: #4ade80; /* Tono verde para margen contable positivo */
 }
 
 .barcode-row {
@@ -790,7 +811,7 @@ async function onCodigoLeido(codigo: string) {
   padding: 0 0.75rem;
   font-size: 0.8rem;
   font-weight: 600;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 6px;
   display: inline-flex;
   align-items: center;
@@ -800,13 +821,13 @@ async function onCodigoLeido(codigo: string) {
   background: rgba(255, 255, 255, 0.02);
 }
 
-/* Modal Ajustado al Viewport Móvil Seguro */
+/* Arquitectura Modal Ultra-Móvil */
 .modal-bg {
   position: fixed;
   inset: 0 !important;
   width: 100vw;
   height: 100vh;
-  background: rgba(6, 8, 13, 0.85);
+  background: rgba(5, 6, 10, 0.85);
   display: grid;
   place-items: center;
   padding: 0.75rem;
@@ -818,8 +839,10 @@ async function onCodigoLeido(codigo: string) {
   width: 100%;
   max-width: 440px;
   padding: 1.25rem;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
   box-sizing: border-box;
+  background: #080a10;
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 .modal h3 {
   margin: 0 0 1rem 0;
@@ -863,7 +886,7 @@ async function onCodigoLeido(codigo: string) {
 @media (max-width: 480px) {
   .lbl-btn {
     display: none;
-  } /* Oculta descripciones largas en botones */
+  }
   .mini-btn {
     width: 36px;
     padding: 0;
@@ -873,7 +896,7 @@ async function onCodigoLeido(codigo: string) {
   .form-row {
     grid-template-columns: 1fr;
     gap: 0;
-  } /* Apila precios en vertical */
+  }
 
   .barcode-row {
     align-items: stretch;
@@ -951,5 +974,17 @@ async function onCodigoLeido(codigo: string) {
     gap: 0.75rem;
     margin-top: 1.5rem;
   }
+}
+
+/* Scrollbar Customization */
+.hist-wrapper::-webkit-scrollbar {
+  width: 4px;
+}
+.hist-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+.hist-wrapper::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
 }
 </style>
