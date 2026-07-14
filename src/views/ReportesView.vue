@@ -5,13 +5,23 @@ import api from '@/services/api'
 
 const router = useRouter()
 
+// Igual que en el Dashboard: usamos hora LOCAL, no UTC, para evitar que
+// en horas de la tarde/noche la fecha "hasta" quede adelantada un día
+// respecto a Costa Rica y el rango termine excluyendo las ventas de hoy.
+function fechaLocalISO(d: Date = new Date()): string {
+  const anio = d.getFullYear()
+  const mes = String(d.getMonth() + 1).padStart(2, '0')
+  const dia = String(d.getDate()).padStart(2, '0')
+  return `${anio}-${mes}-${dia}`
+}
+
 function isoHace(dias: number) {
   const d = new Date()
   d.setDate(d.getDate() - dias)
-  return d.toISOString().slice(0, 10)
+  return fechaLocalISO(d)
 }
 const desde = ref(isoHace(30))
-const hasta = ref(new Date().toISOString().slice(0, 10))
+const hasta = ref(fechaLocalISO())
 
 const cargando = ref(true)
 const resumen = ref<any>(null)
@@ -59,7 +69,7 @@ const rangoActivo = ref(30)
 function rango(dias: number) {
   rangoActivo.value = dias
   desde.value = isoHace(dias)
-  hasta.value = new Date().toISOString().slice(0, 10)
+  hasta.value = fechaLocalISO()
   cargar()
 }
 

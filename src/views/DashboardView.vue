@@ -12,14 +12,30 @@ const numVentas = ref(0)
 const porCobrar = ref(0)
 const cargando = ref(true)
 
+// Devuelve la fecha de hoy en formato YYYY-MM-DD según la hora LOCAL del
+// dispositivo. OJO: new Date().toISOString() convierte a UTC, y como Costa
+// Rica va detrás de UTC, en horas de la tarde/noche eso ya "adelanta" al
+// día siguiente — por eso el backend no encontraba ventas de "hoy" y
+// siempre mostraba cero.
+function fechaLocalISO(d: Date = new Date()): string {
+  const anio = d.getFullYear()
+  const mes = String(d.getMonth() + 1).padStart(2, '0')
+  const dia = String(d.getDate()).padStart(2, '0')
+  return `${anio}-${mes}-${dia}`
+}
+
 onMounted(async () => {
   await auth.cargarUsuario()
   try {
+    // El backend no tiene /reportes/ventas-dia; usamos /analytics/resumen
+    // acotado a hoy (desde = hasta = fecha actual) para obtener las
+    // mismas cifras que necesita esta pantalla.
+    const hoy = fechaLocalISO()
     const [ventas, deben] = await Promise.all([
-      api.get('/reportes/ventas-dia'),
+      api.get('/analytics/resumen', { params: { desde: hoy, hasta: hoy } }),
       api.get('/reportes/quien-me-debe'),
     ])
-    totalDia.value = ventas.data.total_dia
+    totalDia.value = ventas.data.total_vendido
     numVentas.value = ventas.data.numero_ventas
     porCobrar.value = deben.data.total_por_cobrar
   } catch {

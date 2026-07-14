@@ -71,7 +71,10 @@ onMounted(async () => {
 
   try {
     const { data } = await api.get('/products')
-    productos.value = data
+    // Igual que en ProductosView: el backend envuelve la colección como
+    // { data: [...] } (ProductResource::collection()->response()), no como
+    // array plano. Sin este desempaque, el catálogo del POS queda vacío.
+    productos.value = data.data || data || []
   } catch (error) {
     console.warn('Catálogo local no disponible. Venta por monto libre activa.')
   }

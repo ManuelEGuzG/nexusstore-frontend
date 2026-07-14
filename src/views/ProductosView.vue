@@ -71,7 +71,9 @@ async function cargar() {
   cargando.value = true
   try {
     const { data } = await api.get('/products', { params: { q: busqueda.value.trim() } })
-    productos.value = data || []
+    // El backend envuelve la colección con ProductResource::collection(...)->response(),
+    // que Laravel serializa como { data: [...] }, no como array plano.
+    productos.value = data.data || data || []
   } catch {
     console.warn('Excepción de red: No se pudo sincronizar el catálogo de artículos.')
   } finally {
