@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/services/api'
 
@@ -29,6 +29,69 @@ const serieDia = ref<any[]>([])
 const serieHora = ref<any[]>([])
 const prod = ref<any>(null)
 const fiado = ref<any>(null)
+
+// ---------- Responsive: detecta pantallas angostas para ajustar alturas
+// y opciones de las gráficas (menos "chrome" visual en celular) ----------
+const esMobil = ref(window.matchMedia('(max-width: 767px)').matches)
+let mediaQuery: MediaQueryList | null = null
+function actualizarEsMobil(e: MediaQueryListEvent | MediaQueryList) {
+  esMobil.value = e.matches
+}
+onMounted(() => {
+  mediaQuery = window.matchMedia('(max-width: 767px)')
+  mediaQuery.addEventListener('change', actualizarEsMobil)
+})
+onUnmounted(() => {
+  mediaQuery?.removeEventListener('change', actualizarEsMobil)
+})
+
+// ---------- Panel de ayuda: explica qué significa cada dato de la vista ----------
+const mostrarAyuda = ref(false)
+const ayudaItems = [
+  {
+    titulo: 'Ventas Netas',
+    texto:
+      'Suma de todas las ventas completadas dentro del rango de fechas elegido, comparada contra el periodo inmediatamente anterior de igual duración.',
+  },
+  {
+    titulo: 'Transacciones',
+    texto:
+      'Cantidad total de ventas realizadas y el monto promedio que deja cada una (ticket promedio).',
+  },
+  {
+    titulo: 'Por Cobrar',
+    texto:
+      'Saldo pendiente de ventas fiadas (a crédito) que tus clientes todavía no te han pagado.',
+  },
+  {
+    titulo: 'Evolución Diaria',
+    texto:
+      'Cuánto vendiste cada día del rango. Sirve para ver qué días se vende más y cuáles menos.',
+  },
+  {
+    titulo: 'Margen de Utilidad',
+    texto:
+      'Porcentaje de ganancia estimado sobre el costo de lo vendido, junto con la ganancia en colones.',
+  },
+  {
+    titulo: 'Top 10 Productos',
+    texto: 'Los diez artículos que más se vendieron en el rango, ordenados por monto total.',
+  },
+  {
+    titulo: 'Frecuencia Horaria',
+    texto:
+      'En qué horas del día se concentran las ventas. Útil para planear turnos y horarios de personal.',
+  },
+  {
+    titulo: 'Inventario Crítico',
+    texto: 'Productos cuyo stock está por agotarse y conviene reabastecer pronto.',
+  },
+  {
+    titulo: 'Flujo de Crédito',
+    texto:
+      'Cuánto fiaste, cuánto te han abonado, y el balance neto de crédito otorgado en el periodo.',
+  },
+]
 
 function fmt(n: number) {
   return (
@@ -73,15 +136,159 @@ function rango(dias: number) {
   cargar()
 }
 
-const maxDia = computed(() => Math.max(1, ...serieDia.value.map((d) => Number(d.total))))
-const maxHora = computed(() => Math.max(1, ...serieHora.value.map((h) => Number(h.total))))
+// ---------- Top 10 productos más vendidos (el backend devuelve hasta 15) ----------
+const top10Productos = computed(() => (prod.value?.mas_vendidos || []).slice(0, 10))
+const maxMontoProducto = computed(() =>
+  Math.max(1, ...top10Productos.value.map((p: any) => Number(p.monto))),
+)
 
-const strokeDashoffset = computed(() => {
-  const margen = resumen.value?.margen_pct || 0
-  const porcentaje = Math.min(100, Math.max(0, margen))
-  const circunf = Math.PI * 50
-  return circunf - (porcentaje / 100) * circunf
-})
+// ---------- ApexCharts: Evolución diaria (área con gradiente) ----------
+const diaSeries = computed(() => [
+  { name: 'Ventas', data: serieDia.value.map((d) => Number(d.total)) },
+])
+const diaAltura = computed(() => (esMobil.value ? 210 : 270))
+const diaOptions = computed(() => ({
+  chart: {
+    type: 'area',
+    toolbar: { show: !esMobil.value, tools: { download: false } },
+    zoom: { enabled: !esMobil.value },
+    background: 'transparent',
+    foreColor: '#7c8aa5',
+    fontFamily: 'inherit',
+    animations: { easing: 'easeinout', speed: 450 },
+  },
+  colors: ['#a3e635'],
+  fill: {
+    type: 'gradient',
+    gradient: {
+      shadeIntensity: 1,
+      opacityFrom: 0.45,
+      opacityTo: 0.02,
+      stops: [0, 90, 100],
+    },
+  },
+  markers: {
+    size: 0,
+    hover: { size: 6 },
+    colors: ['#a3e635'],
+    strokeColors: '#0b0e18',
+    strokeWidth: 2,
+  },
+  dataLabels: { enabled: false },
+  stroke: { curve: 'smooth', width: 3 },
+  grid: {
+    borderColor: 'rgba(255,255,255,0.06)',
+    strokeDashArray: 4,
+    padding: { left: 4, right: 4 },
+  },
+  xaxis: {
+    categories: serieDia.value.map((d) => fmtFecha(d.dia)),
+    labels: { style: { fontSize: '0.68rem' }, rotate: 0 },
+    axisBorder: { show: false },
+    axisTicks: { show: false },
+    tooltip: { enabled: false },
+  },
+  yaxis: {
+    labels: { formatter: (v: number) => fmt(v), style: { fontSize: '0.68rem' } },
+  },
+  tooltip: {
+    theme: 'dark',
+    x: { show: false },
+    y: { formatter: (v: number) => fmt(v), title: { formatter: () => 'Ventas del día:' } },
+    marker: { show: true },
+  },
+}))
+
+// ---------- ApexCharts: Frecuencia horaria (barras horizontales) ----------
+const horaSeries = computed(() => [
+  { name: 'Ventas', data: serieHora.value.map((h) => Number(h.total)) },
+])
+const horaAltura = computed(() => (esMobil.value ? 230 : 280))
+const horaOptions = computed(() => ({
+  chart: {
+    type: 'bar',
+    toolbar: { show: false },
+    background: 'transparent',
+    foreColor: '#7c8aa5',
+    fontFamily: 'inherit',
+    animations: { easing: 'easeinout', speed: 450 },
+  },
+  plotOptions: {
+    bar: { horizontal: true, borderRadius: 5, barHeight: '58%', distributed: false },
+  },
+  colors: ['#3b82f6'],
+  fill: {
+    type: 'gradient',
+    gradient: {
+      type: 'horizontal',
+      shadeIntensity: 0.6,
+      gradientToColors: ['#a3e635'],
+      inverseColors: false,
+      opacityFrom: 0.95,
+      opacityTo: 0.95,
+      stops: [0, 100],
+    },
+  },
+  dataLabels: { enabled: false },
+  grid: { borderColor: 'rgba(255,255,255,0.06)', strokeDashArray: 4 },
+  xaxis: {
+    categories: serieHora.value.map((h) => horaTxt(h.hora)),
+    labels: { formatter: (v: number) => fmt(v), style: { fontSize: '0.65rem' } },
+  },
+  yaxis: { labels: { style: { fontSize: '0.7rem' } } },
+  tooltip: {
+    theme: 'dark',
+    y: { formatter: (v: number) => fmt(v), title: { formatter: () => 'Vendido a las:' } },
+  },
+}))
+
+// ---------- ApexCharts: Margen de utilidad (gauge radial) ----------
+const gaugeSeries = computed(() => [
+  Math.min(100, Math.max(0, Number(resumen.value?.margen_pct) || 0)),
+])
+const gaugeAltura = computed(() => (esMobil.value ? 170 : 200))
+const gaugeOptions = computed(() => ({
+  chart: {
+    type: 'radialBar',
+    sparkline: { enabled: true },
+    background: 'transparent',
+    fontFamily: 'inherit',
+    animations: { easing: 'easeinout', speed: 600 },
+  },
+  colors: ['#a3e635'],
+  stroke: { lineCap: 'round' },
+  fill: {
+    type: 'gradient',
+    gradient: {
+      shade: 'dark',
+      type: 'diagonal1',
+      shadeIntensity: 0.4,
+      gradientToColors: ['#65d612'],
+      stops: [0, 100],
+    },
+  },
+  plotOptions: {
+    radialBar: {
+      hollow: { size: '65%' },
+      track: { background: '#161b2c' },
+      dataLabels: {
+        name: {
+          fontSize: '0.65rem',
+          color: '#7c8aa5',
+          offsetY: 18,
+          formatter: () => 'Ganancia Estimada',
+        },
+        value: {
+          fontSize: '1.05rem',
+          color: '#ffffff',
+          fontWeight: 700,
+          offsetY: -14,
+          formatter: () => fmt(resumen.value?.ganancia_estimada || 0),
+        },
+      },
+    },
+  },
+}))
 
 function exportarCsv() {
   const token = localStorage.getItem('nexus_token')
@@ -126,6 +333,28 @@ function horaTxt(h: number) {
           <span class="eyebrow">Analítica comercial</span>
           <h1>Resumen Operativo</h1>
         </div>
+        <button
+          class="btn-icon"
+          :class="{ activo: mostrarAyuda }"
+          @click="mostrarAyuda = !mostrarAyuda"
+          aria-label="Explicar qué significa cada dato de esta vista"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="17"
+            height="17"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+        </button>
         <button class="btn-primary" @click="exportarCsv" aria-label="Exportar reporte CSV">
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -145,6 +374,40 @@ function horaTxt(h: number) {
           <span class="lbl-btn">Exportar</span>
         </button>
       </div>
+
+      <transition name="ayuda-fade">
+        <div v-if="mostrarAyuda" class="ayuda-panel card">
+          <div class="ayuda-panel-head">
+            <h3>¿Qué significa cada dato?</h3>
+            <button
+              class="btn-icon btn-cerrar-ayuda"
+              @click="mostrarAyuda = false"
+              aria-label="Cerrar ayuda"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+          <div class="ayuda-grid">
+            <div v-for="item in ayudaItems" :key="item.titulo" class="ayuda-item">
+              <span class="ayuda-item-titulo">{{ item.titulo }}</span>
+              <span class="ayuda-item-texto">{{ item.texto }}</span>
+            </div>
+          </div>
+        </div>
+      </transition>
     </header>
 
     <div class="filtros card fade-up" style="animation-delay: 0.05s">
@@ -264,20 +527,13 @@ function horaTxt(h: number) {
             <span class="panel-tag">Ventas totales</span>
           </div>
           <div class="chart-container-dia">
-            <div v-if="serieDia.length" class="chart-dia">
-              <div v-for="d in serieDia" :key="d.dia" class="cd-col">
-                <div class="cd-bar-wrapper">
-                  <div
-                    class="cd-bar"
-                    :style="{ height: (Number(d.total) / maxDia) * 100 + '%' }"
-                    :title="fmtFecha(d.dia) + ': ' + fmt(d.total)"
-                  >
-                    <div class="bar-glow"></div>
-                  </div>
-                </div>
-                <span class="cd-lbl">{{ fmtFecha(d.dia) }}</span>
-              </div>
-            </div>
+            <apexchart
+              v-if="serieDia.length"
+              type="area"
+              :height="diaAltura"
+              :options="diaOptions"
+              :series="diaSeries"
+            />
             <p v-else class="dim vacío">Sin transacciones registradas.</p>
           </div>
         </section>
@@ -288,29 +544,12 @@ function horaTxt(h: number) {
           </div>
           <div class="gauge-box">
             <div class="gauge-svg-wrap">
-              <svg viewBox="0 0 120 70" class="gauge-element">
-                <path
-                  d="M 10 60 A 50 50 0 0 1 110 60"
-                  fill="none"
-                  stroke="#161b2c"
-                  stroke-width="10"
-                  stroke-linecap="round"
-                />
-                <path
-                  d="M 10 60 A 50 50 0 0 1 110 60"
-                  fill="none"
-                  stroke="var(--accent, #a3e635)"
-                  stroke-width="10"
-                  stroke-linecap="round"
-                  stroke-dasharray="157.08"
-                  :stroke-dashoffset="strokeDashoffset"
-                  class="gauge-progress"
-                />
-              </svg>
-              <div class="gauge-center-text">
-                <span class="gauge-big-val">{{ fmt(resumen.ganancia_estimada) }}</span>
-                <span class="gauge-sub">Ganancia Estimada</span>
-              </div>
+              <apexchart
+                type="radialBar"
+                :height="gaugeAltura"
+                :options="gaugeOptions"
+                :series="gaugeSeries"
+              />
             </div>
             <div class="gauge-footer-metric">
               <span class="lbl">Rendimiento</span>
@@ -323,17 +562,28 @@ function horaTxt(h: number) {
       <div class="details-grid">
         <section class="card panel fade-up" style="animation-delay: 0.2s">
           <div class="panel-header">
-            <h2>Productos Más Vendidos</h2>
+            <h2>Top 10 Productos Más Vendidos</h2>
           </div>
-          <ol v-if="prod.mas_vendidos.length" class="ranking">
-            <li v-for="(p, i) in prod.mas_vendidos" :key="p.descripcion" class="rk">
-              <span class="rk-pos" :class="{ 'rk-pos-top': i === 0 }">{{ i + 1 }}</span>
-              <span class="rk-desc" :title="p.descripcion">{{ p.descripcion }}</span>
-              <div class="rk-stats-box">
-                <span class="rk-cant"
-                  >{{ Number(p.amount || p.cantidad).toLocaleString('es-CR') }} u.</span
-                >
-                <span class="rk-monto">{{ fmt(p.monto) }}</span>
+          <ol v-if="top10Productos.length" class="ranking">
+            <li v-for="(p, i) in top10Productos" :key="p.descripcion" class="rk">
+              <span class="rk-pos" :class="{ 'rk-pos-top': i === 0 }">{{ Number(i) + 1 }}</span>
+              <div class="rk-body">
+                <div class="rk-linea">
+                  <span class="rk-desc" :title="p.descripcion">{{ p.descripcion }}</span>
+                  <div class="rk-stats-box">
+                    <span class="rk-cant"
+                      >{{ Number(p.amount || p.cantidad).toLocaleString('es-CR') }} u.</span
+                    >
+                    <span class="rk-monto">{{ fmt(p.monto) }}</span>
+                  </div>
+                </div>
+                <div class="rk-track">
+                  <div
+                    class="rk-fill"
+                    :class="{ 'rk-fill-top': i === 0 }"
+                    :style="{ width: (Number(p.monto) / maxMontoProducto) * 100 + '%' }"
+                  ></div>
+                </div>
               </div>
             </li>
           </ol>
@@ -345,16 +595,12 @@ function horaTxt(h: number) {
             <h2>Frecuencia Horaria</h2>
           </div>
           <div v-if="serieHora.length" class="chart-hora">
-            <div v-for="h in serieHora" :key="h.hora" class="ch-row">
-              <span class="ch-hora">{{ horaTxt(h.hora) }}</span>
-              <div class="ch-track">
-                <div
-                  class="ch-fill"
-                  :style="{ width: (Number(h.total) / maxHora) * 100 + '%' }"
-                ></div>
-              </div>
-              <span class="ch-val">{{ fmt(h.total) }}</span>
-            </div>
+            <apexchart
+              type="bar"
+              :height="horaAltura"
+              :options="horaOptions"
+              :series="horaSeries"
+            />
           </div>
           <p v-else class="dim vacío">Métricas horarias insuficientes.</p>
         </section>
@@ -527,6 +773,69 @@ function horaTxt(h: number) {
     color: #0b1206;
     box-shadow: 0 4px 16px -4px rgba(163, 230, 53, 0.45);
   }
+}
+
+/* ---------- Panel de ayuda ---------- */
+.btn-icon.activo {
+  border-color: var(--accent, #a3e635);
+  color: var(--accent, #a3e635);
+  background: rgba(163, 230, 53, 0.1);
+}
+.ayuda-panel {
+  margin-top: 0.75rem;
+  padding: 1rem;
+}
+.ayuda-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+.ayuda-panel-head h3 {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+.btn-cerrar-ayuda {
+  width: 30px;
+  height: 30px;
+}
+.ayuda-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+.ayuda-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.65rem 0.75rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 9px;
+}
+.ayuda-item-titulo {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--accent, #a3e635);
+}
+.ayuda-item-texto {
+  font-size: 0.76rem;
+  color: #9aa8c2;
+  line-height: 1.45;
+}
+.ayuda-fade-enter-active,
+.ayuda-fade-leave-active {
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+.ayuda-fade-enter-from,
+.ayuda-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
 }
 
 /* En pantallas muy angostas, el botón de exportar se reduce a solo ícono */
@@ -772,49 +1081,6 @@ function horaTxt(h: number) {
   background: rgba(255, 255, 255, 0.08);
   border-radius: 2px;
 }
-.chart-dia {
-  display: flex;
-  align-items: flex-end;
-  gap: 0.4rem;
-  height: 130px;
-  min-width: max-content;
-}
-.cd-col {
-  width: 30px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  height: 100%;
-}
-.cd-bar-wrapper {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-}
-.cd-bar {
-  width: 100%;
-  max-width: 18px;
-  background: linear-gradient(180deg, var(--accent, #a3e635), #3b82f6);
-  border-radius: 5px 5px 2px 2px;
-  position: relative;
-  min-height: 4px;
-}
-.bar-glow {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.15), transparent 60%);
-  border-radius: 5px 5px 2px 2px;
-}
-.cd-lbl {
-  font-size: 0.62rem;
-  color: #7c8aa5;
-  margin-top: 0.5rem;
-  font-weight: 500;
-  white-space: nowrap;
-}
 
 /* ---------- Gauge ---------- */
 .gauge-panel {
@@ -832,35 +1098,6 @@ function horaTxt(h: number) {
   position: relative;
   width: 100%;
   max-width: 190px;
-}
-.gauge-element {
-  width: 100%;
-  height: auto;
-}
-.gauge-progress {
-  filter: drop-shadow(0 0 6px rgba(163, 230, 53, 0.45));
-}
-.gauge-center-text {
-  position: absolute;
-  bottom: 6px;
-  left: 0;
-  right: 0;
-  text-align: center;
-  padding: 0 0.5rem;
-}
-.gauge-big-val {
-  font-size: clamp(0.95rem, 4.5vw, 1.15rem);
-  font-weight: 700;
-  color: #ffffff;
-  display: block;
-  letter-spacing: -0.02em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.gauge-sub {
-  font-size: 0.65rem;
-  color: #7c8aa5;
 }
 .gauge-footer-metric {
   margin-top: 0.85rem;
@@ -888,7 +1125,7 @@ function horaTxt(h: number) {
 }
 .rk {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.55rem;
   padding: 0.65rem 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
@@ -908,10 +1145,23 @@ function horaTxt(h: number) {
   color: #7c8aa5;
   font-size: 0.7rem;
   font-weight: 700;
+  margin-top: 0.05rem;
 }
 .rk-pos-top {
   background: rgba(163, 230, 53, 0.15);
   color: var(--accent, #a3e635);
+}
+.rk-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.rk-linea {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
 }
 .rk-desc {
   flex: 1;
@@ -940,42 +1190,21 @@ function horaTxt(h: number) {
   color: #ffffff;
   white-space: nowrap;
 }
-
-/* ---------- Frecuencia horaria ---------- */
-.chart-hora {
-  display: flex;
-  flex-direction: column;
-  gap: 0.65rem;
-}
-.ch-row {
-  display: grid;
-  grid-template-columns: 38px 1fr auto;
-  gap: 0.5rem;
-  align-items: center;
-}
-.ch-hora {
-  font-size: 0.72rem;
-  color: #7c8aa5;
-  font-weight: 500;
-}
-.ch-track {
+.rk-track {
+  width: 100%;
+  height: 5px;
+  border-radius: 100px;
   background: rgba(255, 255, 255, 0.05);
-  border-radius: 100px;
-  height: 7px;
   overflow: hidden;
-  min-width: 0;
 }
-.ch-fill {
+.rk-fill {
   height: 100%;
-  background: linear-gradient(90deg, #3b82f6, var(--accent, #a3e635));
   border-radius: 100px;
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+  transition: width 0.4s ease;
 }
-.ch-val {
-  font-size: 0.72rem;
-  text-align: right;
-  font-weight: 700;
-  color: #e2e8f0;
-  white-space: nowrap;
+.rk-fill-top {
+  background: linear-gradient(90deg, var(--accent, #a3e635), #d9ff8a);
 }
 
 /* ---------- Inventario crítico ---------- */
@@ -1154,6 +1383,9 @@ function horaTxt(h: number) {
   .top h1 {
     font-size: 1.3rem;
   }
+  .ayuda-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 @media (min-width: 768px) {
@@ -1180,12 +1412,8 @@ function horaTxt(h: number) {
       0 1px 2px rgba(0, 0, 0, 0.2),
       0 16px 32px -16px rgba(0, 0, 0, 0.7);
   }
-  .cd-col {
-    width: auto;
-    flex: 1;
-  }
-  .chart-dia {
-    min-width: 520px;
+  .ayuda-grid {
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 
